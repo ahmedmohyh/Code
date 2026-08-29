@@ -1,0 +1,69 @@
+# Base configuration for the Flow-LoL pipeline.
+# Copy and modify this file for each ablation setup.
+
+experiment_name: "setup_04_no_zscore"
+seed: 42
+
+dataset:
+  name: "BIRAFFE2"
+  path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
+  metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  modalities:
+    - "ECG"
+  score_column: "GEQ-1-FLOW-2018"
+
+label:
+  method: "median_split"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "low"
+    - "high"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: false
+  outlier_strategy: "train_only"
+  baseline_correction: "none"
+  baseline_length_s: 60
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency:
+      - "VLF"
+      - "LF"
+      - "HF"
+      - "LF_HF"
+      - "TP"
+    nonlinear:
+      - "sample_entropy"
+      - "DFA_alpha1"
+      - "DFA_alpha2"
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+  deep: []
+
+validation:
+  strategy: "LOSO"
+  permutation: false
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"
