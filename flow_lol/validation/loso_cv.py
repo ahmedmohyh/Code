@@ -2,6 +2,7 @@
 from typing import Any, Dict, List
 
 import numpy as np
+from tqdm import tqdm
 
 from flow_lol.preprocessing.normaliser import ZStandardiser
 from flow_lol.preprocessing.outlier_handler import OutlierHandler
@@ -39,7 +40,8 @@ def run_loso_cv(X_by_subject: Dict[int, np.ndarray],
     all_y_proba = []
     fold_results = []
 
-    for test_subject in subjects:
+    pbar = tqdm(subjects, desc="LOSO folds")
+    for test_subject in pbar:
         train_subjects = [s for s in subjects if s != test_subject]
 
         X_train = np.vstack([X_by_subject[s] for s in train_subjects])
@@ -109,6 +111,15 @@ def run_loso_cv(X_by_subject: Dict[int, np.ndarray],
         all_y_pred.append(y_pred)
         if y_proba is not None:
             all_y_proba.append(y_proba)
+
+        pbar.set_postfix({
+            "acc": f"{fold_metrics['accuracy']:.3f}",
+            "f1": f"{fold_metrics['f1_macro']:.3f}",
+            "n_train": fold_metrics["n_train"],
+            "n_test": fold_metrics["n_test"],
+        })
+
+    pbar.close()
 
     if not all_y_true:
         return {"fold_results": [], "aggregate": {}}

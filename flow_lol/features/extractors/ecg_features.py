@@ -48,11 +48,11 @@ def _extract_neurokit2(signal, sampling_rate, selected_time, selected_frequency,
     if rri_ms.size >= 30:
         try:
             hrv = nk.hrv_frequency(info, sampling_rate=sampling_rate, show=False)
-            feats["VLF"] = float(hrv.get("HRV_VLF", np.nan))
-            feats["LF"] = float(hrv.get("HRV_LF", np.nan))
-            feats["HF"] = float(hrv.get("HRV_HF", np.nan))
-            feats["LF_HF"] = float(hrv.get("HRV_LFHF", np.nan))
-            feats["TP"] = float(hrv.get("HRV_TP", np.nan))
+            feats["VLF"] = float(_series_value(hrv, "HRV_VLF"))
+            feats["LF"] = float(_series_value(hrv, "HRV_LF"))
+            feats["HF"] = float(_series_value(hrv, "HRV_HF"))
+            feats["LF_HF"] = float(_series_value(hrv, "HRV_LFHF"))
+            feats["TP"] = float(_series_value(hrv, "HRV_TP"))
         except Exception:
             pass
 
@@ -60,9 +60,9 @@ def _extract_neurokit2(signal, sampling_rate, selected_time, selected_frequency,
     if rri_ms.size > 3:
         try:
             hrv_non = nk.hrv_nonlinear(info, sampling_rate=sampling_rate, show=False)
-            feats["sample_entropy"] = float(hrv_non.get("HRV_SampEn", np.nan))
-            feats["DFA_alpha1"] = float(hrv_non.get("HRV_DFA_alpha1", np.nan))
-            feats["DFA_alpha2"] = float(hrv_non.get("HRV_DFA_alpha2", np.nan))
+            feats["sample_entropy"] = float(_series_value(hrv_non, "HRV_SampEn"))
+            feats["DFA_alpha1"] = float(_series_value(hrv_non, "HRV_DFA_alpha1"))
+            feats["DFA_alpha2"] = float(_series_value(hrv_non, "HRV_DFA_alpha2"))
         except Exception:
             pass
 
@@ -79,6 +79,17 @@ def _extract_heartpy(signal, sampling_rate, selected_time):
         "pNN50": float(m.get("pnn50", np.nan)),
     }
     return _filter_features(feats, selected_time, None, None)
+
+
+def _series_value(series_or_scalar, key):
+    """Safely extract a scalar from a pandas Series or a scalar value."""
+    import pandas as pd
+    val = series_or_scalar.get(key, np.nan) if hasattr(series_or_scalar, "get") else np.nan
+    if isinstance(val, pd.Series):
+        if len(val) == 0:
+            return np.nan
+        val = val.iloc[0]
+    return val
 
 
 def _filter_features(feats: Dict, selected_time, selected_frequency, selected_nonlinear) -> Dict:

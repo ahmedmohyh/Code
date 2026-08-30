@@ -5,6 +5,7 @@ import warnings
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 # Add package root to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -31,7 +32,7 @@ def load_biraffe2_data(config: Config):
     print(f"Found {len(subjects)} valid subjects with biosignals and labels.")
 
     # Build labels globally (median / margin on all subjects)
-    scores = np.array([loader.load_subject(sid)["label"] for sid in subjects])
+    scores = np.array([loader.load_subject(sid)["label"] for sid in tqdm(subjects, desc="Loading labels")])
     labeler = FlowLabeler(config.label)
     labels, mask = labeler.fit_transform(scores)
 
@@ -50,11 +51,10 @@ def load_biraffe2_data(config: Config):
     y_by_subject = {}
     skipped = 0
 
-    for idx, sid in enumerate(subjects):
-        if not mask[idx]:
-            skipped += 1
-            continue
-
+    sid_to_idx = {sid: i for i, sid in enumerate(subjects)}
+    active_subjects = [sid for sid, m in zip(subjects, mask) if m]
+    pbar = tqdm(active_subjects, desc="Cleaning + extracting features")
+    for idx, sid in enumerate(active_subjects):
         record = loader.load_subject(sid)
         ecg_raw = record["signal"]["ECG"].to_numpy(dtype=float)
 
@@ -66,7 +66,7 @@ def load_biraffe2_data(config: Config):
                 package=config.preprocessing.cleaning_package,
             )
         except Exception as e:
-            print(f"  [skip subject {sid}] ECG cleaning failed: {e}")
+            pbar.write(f"  [skip subject {sid}] ECG cleaning failed: {e}")
             skipped += 1
             continue
 
@@ -88,7 +88,7 @@ def load_biraffe2_data(config: Config):
                 continue
 
         if len(feats) == 0:
-            print(f"  [skip subject {sid}] no features extracted")
+            pbar.write(f"  [skip subject {sid}] no features extracted")
             skipped += 1
             continue
 
@@ -96,8 +96,10 @@ def load_biraffe2_data(config: Config):
         X = impute_missing(X, strategy="median")
 
         X_by_subject[sid] = X
-        y_by_subject[sid] = np.full(len(X), fill_value=labels[idx], dtype=int)
+        y_by_subject[sid] = np.full(len(X), fill_value=labels[sid_to_idx[sid]], dtype=int)
+        pbar.set_postfix({"windows": len(feats), "feats": X.shape[1]})
 
+    pbar.close()
     print(f"Subjects used: {len(X_by_subject)}, skipped: {skipped}")
     return X_by_subject, y_by_subject, feature_names, labeler
 
