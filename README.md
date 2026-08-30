@@ -50,14 +50,14 @@ tests/                  # Unit tests
 | Setup | File | Purpose |
 |-------|------|---------|
 | 01 | `config/setup_01_biraffe2_ecg_baseline.yaml` | BIRAFFE2 ECG-only baseline |
-| 02 | `config/setup_02_label_margin.yaml` | Median split with margin band |
+| 02 | `config/setup_02_label_margin_01.yaml` | Median split with margin band 0.1 |
 | 03 | `config/setup_03_without_time_distortion.yaml` | Labels without Time Distortion item |
 | 04 | `config/setup_04_no_zscore.yaml` | No z-standardisation |
-| 05 | `config/setup_05_no_outlier_removal.yaml` | No outlier removal |
+| 05 | `config/setup_05_no_outlier.yaml` | No outlier removal |
 | 06 | `config/setup_06_full_multimodal.yaml` | BIRAFFE2 ECG + EDA + webcam |
 | 07 | `config/setup_07_5min_window.yaml` | 5-minute fixed window |
 | 08 | `config/setup_08_irshad_physf.yaml` | Irshad/PhySF ECG + EDA + EEG with baseline correction |
-| 09 | `config/setup_09_heartpy_package.yaml` | ECG cleaning/features with heartpy |
+| 09 | `config/setup_09_heartpy.yaml` | ECG cleaning/features with heartpy |
 | 10 | `config/setup_10_all_models.yaml` | All classical + LSTM model comparison |
 
 Run any setup with:
@@ -89,3 +89,14 @@ Results are written to `results/<experiment_name>/`.
 - Raw data are **not** committed; only relative paths are stored in configs.
 - Every run is fully determined by its config file.
 - The first implemented setup (`setup_01`) runs end-to-end on BIRAFFE2 ECG data.
+
+## Current status
+
+- ✅ Git repository initialised
+- ✅ Package skeleton and config system
+- ✅ BIRAFFE2 ECG-only baseline (Setup 01) implemented and tested
+- ✅ 10 ablation config files created
+- ✅ LOSO CV, per-class metrics, z-standardisation, outlier handling
+- 🔄 Stubs ready: EDA/webcam/EEG loaders, heartpy/biosppy/MNE comparisons, deep models, permutation analysis
+- ⏳ Not yet run: full experiment on all 102 subjects (requires dependency installation)
+
