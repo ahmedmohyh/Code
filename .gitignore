@@ -1,5 +1,5 @@
-# Data and raw signals
-data/
+# Data and raw signals (only at repository root)
+/data/
 cache/
 *.zip
 *.csv
@@ -7,8 +7,8 @@ cache/
 *.h5
 *.edf
 
-# Models and outputs
-models/
+# Models and outputs (only at repository root)
+/models/
 checkpoints/
 results/
 *.pkl
