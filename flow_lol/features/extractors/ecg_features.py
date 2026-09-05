@@ -1,7 +1,11 @@
 """ECG / HRV feature extraction adapters."""
+import warnings
 from typing import Dict, List
 
 import numpy as np
+
+# Suppress NeuroKit2 DFA_alpha2 warning that floods output for short windows.
+warnings.filterwarnings("ignore", message=".*DFA_alpha2.*")
 
 
 def extract_ecg_features(signal: np.ndarray, sampling_rate: float, package: str = "neurokit2",

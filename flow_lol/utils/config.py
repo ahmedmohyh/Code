@@ -1,6 +1,6 @@
 """Configuration schema and loader."""
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import List, Optional, Union
 from pathlib import Path
 import yaml
 
@@ -11,7 +11,7 @@ class DatasetConfig:
     path: str = ""
     metadata_path: str = ""
     modalities: List[str] = field(default_factory=lambda: ["ECG"])
-    score_column: str = "GEQ-1-FLOW-2018"
+    score_column: Union[str, List[str]] = "GEQ-1-FLOW-2018"
 
 
 @dataclass
