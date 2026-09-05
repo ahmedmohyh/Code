@@ -22,13 +22,16 @@ class BIRAFFE2Loader:
     pre-computed GEQ Flow subscale scores such as ``GEQ-1-FLOW-2018``.
     """
 
-    def __init__(self, config: DatasetConfig):
+    def __init__(self, config: DatasetConfig, cache_dir: Optional[str] = None):
         self.config = config
         self.zip_path = Path(config.path)
         self.metadata_path = Path(config.metadata_path)
         self.sample_rate = 1000.0
         self.available_files: Dict[int, str] = {}
         self.metadata: Optional[pd.DataFrame] = None
+        self.cache_dir = Path(cache_dir) if cache_dir else None
+        if self.cache_dir:
+            self.cache_dir.mkdir(parents=True, exist_ok=True)
         self._scan_archive()
         self._load_metadata()
 
@@ -48,14 +51,29 @@ class BIRAFFE2Loader:
         # Normalise ID column
         self.metadata["ID"] = pd.to_numeric(self.metadata["ID"], errors="coerce")
 
+    def _score_columns(self) -> List[str]:
+        """Return score column(s) as a list, supporting single or averaged columns."""
+        if isinstance(self.config.score_column, list):
+            return self.config.score_column
+        return [self.config.score_column]
+
+    def _get_label(self, row: pd.DataFrame) -> float:
+        """Read label from one column or average several columns."""
+        cols = self._score_columns()
+        values = row[cols].values[0]
+        if len(cols) == 1:
+            return float(values)
+        return float(np.nanmean(values))
+
     def list_subjects(self) -> List[int]:
         """Return subject IDs that have both biosignals and a valid label."""
+        cols = self._score_columns()
         valid_ids = []
         for sid in sorted(self.available_files.keys()):
             row = self.metadata[self.metadata["ID"] == sid]
             if row.empty:
                 continue
-            if pd.isna(row[self.config.score_column].values[0]):
+            if pd.isna(row[cols].values[0]).all():
                 continue
             valid_ids.append(sid)
         return valid_ids
@@ -74,9 +92,18 @@ class BIRAFFE2Loader:
         if subject_id not in self.available_files:
             raise ValueError(f"Subject {subject_id} not found in biosig archive")
 
-        with zipfile.ZipFile(self.zip_path, "r") as zf:
-            with zf.open(self.available_files[subject_id]) as f:
-                signal = pd.read_csv(f)
+        cache_file = None
+        if self.cache_dir:
+            cache_file = self.cache_dir / f"SUB{subject_id}-BioSigs.csv"
+
+        if cache_file and cache_file.exists():
+            signal = pd.read_csv(cache_file)
+        else:
+            with zipfile.ZipFile(self.zip_path, "r") as zf:
+                with zf.open(self.available_files[subject_id]) as f:
+                    signal = pd.read_csv(f)
+            if cache_file:
+                signal.to_csv(cache_file, index=False)
 
         # Ensure TIMESTAMP is float
         signal["TIMESTAMP"] = pd.to_numeric(signal["TIMESTAMP"], errors="coerce")
@@ -87,7 +114,7 @@ class BIRAFFE2Loader:
         signal = signal[cols]
 
         row = self.metadata[self.metadata["ID"] == subject_id]
-        label = float(row[self.config.score_column].values[0])
+        label = self._get_label(row)
 
         return {
             "subject_id": subject_id,

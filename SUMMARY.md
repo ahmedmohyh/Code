@@ -74,27 +74,33 @@ flow_lol/
 ### 5. Tests
 - `tests/test_loader.py` verifies the BIRAFFE2 loader and Flow labeler work without ML dependencies.
 
+## What was completed since the last update
+
+- ✅ Installed all Python dependencies.
+- ✅ Added `scripts/run_experiment_fast.py` with parallel subject processing and parallel LOSO folds.
+- ✅ Added progress bars for caching, feature extraction, and LOSO folds.
+- ✅ Fixed NaN imputation in `flow_lol/features/feature_union.py` (all-NaN columns now filled with 0.0).
+- ✅ Fixed config JSON serialization by converting dataclass config to plain dict.
+- ✅ Ran Setup 01 end-to-end on all 102 BIRAFFE2 subjects.
+- ✅ Fixed single-class test-fold issue: LOSO CV now also reports **subject-level** accuracy/F1/AUC by aggregating window predictions to one prediction per subject.
+- ✅ Added loader support for averaged score columns (e.g. mean of `GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`).
+- ✅ Created `setup_01_biraffe2_ecg_baseline_avg_levels.yaml`.
+- ✅ Documented GEQ 2013 vs 2018 scoring, feature calculation, and baseline performance interpretation.
+- ✅ Ran the averaged-levels baseline on all 102 subjects. Results:
+  - Window-level: Accuracy=0.458, F1=0.312, AUC=nan
+  - Subject-level: Accuracy=0.434, F1=0.434, AUC=0.362, n=99
+  - Slightly better than single-level Setup 01 (AUC 0.336), but still near chance.
+- ✅ Ran batch ablations Setups 02-05, 07, 09. Subject-level AUCs: 02=0.358, 03=0.336, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Setup 09 (heartpy) achieved the best pure-ECG AUC so far.
+
 ## What still needs to be done
 
 ### Immediate (next coding session)
-1. **Install dependencies**
-   ```bash
-   conda env create -f environment.yml
-   conda activate flow_lol
-   ```
-   or
-   ```bash
-   python -m venv .venv
-   .venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
-
-2. **Run Setup 01 end-to-end**
-   ```bash
-   python scripts/run_experiment.py --config config/setup_01_biraffe2_ecg_baseline.yaml
-   ```
-
-3. **Verify outputs** in `results/setup_01_biraffe2_ecg_baseline/`.
+1. ✅ Verify outputs in `results/setup_01_biraffe2_ecg_baseline/`.
+2. ✅ Created averaged-levels config `setup_01_biraffe2_ecg_baseline_avg_levels.yaml`.
+3. ✅ Updated README, GLOSSARY_AND_METHODOLOGY, and GEQ_ITEMS docs.
+4. ✅ Ran `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` and compared with single-level Setup 01.
+5. ✅ Ran Setup 02–05 / 07 / 09 configs that require no new loaders. Subject-level AUCs: 02=0.358, 03=0.336, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Best pure-ECG result is heartpy (Setup 09).
+6. Implement proper Setup 03: recompute Flow score from raw GEQ items excluding item 25.
 
 ### Short-term (complete the 10 setups)
 4. Implement BIRAFFE2 webcam loader (`flow_lol/data/loaders/biraffe2_face_loader.py`).
@@ -116,7 +122,7 @@ flow_lol/
 ## How to proceed
 
 Tell me which of the following you want next:
-- **A.** Install dependencies and run Setup 01 together.
-- **B.** Implement the next setup (e.g. Setup 02 margin band or Setup 06 multimodal).
-- **C.** Add experiment tracking and a script that runs all 10 configs sequentially.
+- **A.** Implement proper Setup 03 (recompute Flow score from raw GEQ items without item 25).
+- **B.** Implement Setup 06 multimodal (ECG + EDA + webcam) by adding EDA and webcam loaders.
+- **C.** Add experiment tracking and a script that runs all 10 configs sequentially and compares them.
 - **D.** Write unit tests for preprocessing components.
