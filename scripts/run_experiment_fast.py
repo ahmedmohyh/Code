@@ -20,10 +20,12 @@ from flow_lol.utils.config import Config, load_config
 from flow_lol.data.loaders.biraffe2_loader import BIRAFFE2Loader
 from flow_lol.data.labelers.flow_labeler import FlowLabeler
 from flow_lol.preprocessing.cleaners.ecg_cleaner import clean_ecg
+from flow_lol.preprocessing.per_subject_normaliser import PerSubjectNormaliser
 from flow_lol.segmentation.window_segmenter import WindowSegmenter
 from flow_lol.features.extractors.ecg_features import extract_ecg_features
 from flow_lol.features.feature_union import features_to_matrix, impute_missing
-from flow_lol.models.classical import build_classifier
+from flow_lol.models.classical import build_classifier, list_available_classifiers
+from flow_lol.models.deep import build_deep_classifier
 from flow_lol.validation.loso_cv import run_loso_cv
 from flow_lol.reporting.ablation_table import save_results
 
@@ -71,17 +73,8 @@ def _process_one_subject(args_tuple):
 
 
 def _load_label_from_metadata(loader: BIRAFFE2Loader, sid: int) -> float:
-    """Read a subject's label directly from the metadata dataframe (no signal I/O).
-
-    Supports both a single score column and a list of columns to average.
-    """
-    row = loader.metadata[loader.metadata["ID"] == sid]
-    if row.empty:
-        raise ValueError(f"Subject {sid} not found in metadata")
-    cols = loader.config.score_column
-    if isinstance(cols, list):
-        return float(np.nanmean(row[cols].values[0]))
-    return float(row[cols].values[0])
+    """Read a subject's label via the loader (handles real and pseudo IDs)."""
+    return loader.get_label(sid)
 
 
 def _cache_subject(loader: BIRAFFE2Loader, sid: int) -> int:
@@ -187,7 +180,20 @@ def run(config: Config, n_jobs: int = -1):
     if not X_by_subject:
         raise RuntimeError("No subjects produced features.")
 
+    # Per-subject normalization (optional, before LOSO)
+    if getattr(config.preprocessing, "per_subject_normalize", False):
+        print("Applying per-subject normalization...")
+        normaliser = PerSubjectNormaliser(active=True)
+        X_by_subject = normaliser.transform_dict(X_by_subject)
+        print("Per-subject normalization done.")
+
+    # Determine number of features from first subject
+    first_sid = next(iter(X_by_subject))
+    n_features = X_by_subject[first_sid].shape[1]
+
     results_all = {}
+
+    # Classical models
     for model_name in config.models.classical:
         print(f"\nRunning LOSO CV for {model_name}")
 
@@ -203,6 +209,34 @@ def run(config: Config, n_jobs: int = -1):
             feature_names=feature_names,
             random_state=config.seed,
             n_jobs=5,
+        )
+        results_all[model_name] = cv_results
+        agg = cv_results["aggregate"]
+        sub_agg = cv_results.get("subject_aggregate", {})
+        print(f"  Window-level: Accuracy={agg.get('accuracy', np.nan):.3f} "
+              f"F1={agg.get('f1_macro', np.nan):.3f} "
+              f"AUC={agg.get('auc', np.nan):.3f}")
+        print(f"  Subject-level: Accuracy={sub_agg.get('accuracy', np.nan):.3f} "
+              f"F1={sub_agg.get('f1_macro', np.nan):.3f} "
+              f"AUC={sub_agg.get('auc', np.nan):.3f} "
+              f"n={sub_agg.get('n_subjects_used', 0)}")
+
+    # Deep-learning models
+    for model_name in config.models.deep:
+        print(f"\nRunning LOSO CV for deep model {model_name}")
+
+        def deep_builder(name=model_name, n=n_features):
+            return build_deep_classifier(name, n_features=n, random_state=config.seed)
+
+        cv_results = run_loso_cv(
+            X_by_subject, y_by_subject,
+            model_builder=deep_builder,
+            z_standardise=config.preprocessing.z_standardise,
+            outlier_strategy=config.preprocessing.outlier_strategy,
+            run_permutation=config.validation.permutation,
+            feature_names=feature_names,
+            random_state=config.seed,
+            n_jobs=1,  # PyTorch models train on GPU/CPU; avoid fold-level parallelism
         )
         results_all[model_name] = cv_results
         agg = cv_results["aggregate"]

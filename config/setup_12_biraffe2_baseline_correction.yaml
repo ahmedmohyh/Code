@@ -1,0 +1,74 @@
+# Setup 12: baseline correction using the BASELINE START/END segment from the
+# BIRAFFE2 procedure files. Tests whether removing subject-specific resting
+# physiology improves cross-subject generalisation.
+
+experiment_name: "setup_12_biraffe2_baseline_correction"
+seed: 42
+
+dataset:
+  name: "BIRAFFE2"
+  path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
+  metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
+  modalities:
+    - "ECG"
+  score_column: "GEQ-1-FLOW-2018"
+
+label:
+  method: "median_split"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "low"
+    - "high"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: true
+  outlier_strategy: "train_only"
+  baseline_correction: "change_score"   # change_score or quotient
+  baseline_length_s: 60
+  baseline_from_procedure: true           # NEW: use BASELINE START/END events
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency:
+      - "VLF"
+      - "LF"
+      - "HF"
+      - "LF_HF"
+      - "TP"
+    nonlinear:
+      - "sample_entropy"
+      - "DFA_alpha1"
+      - "DFA_alpha2"
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+    - "LogisticRegression"
+    - "XGBoost"
+  deep: []
+
+validation:
+  strategy: "LOSO"
+  permutation: false
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"

@@ -25,6 +25,22 @@ The flow-state class assigned to a subject. In BIRAFFE2 there is **one global fl
 - `0` = low flow
 - `1` = high flow
 
+### Pseudo-subject (Setup 01c)
+In **level-as-subjects** mode, each real BIRAFFE2 subject is expanded into up to
+three pseudo-subjects — one per game level. The GAME phase is split into three
+equal-duration segments, and each segment receives the Flow score from the
+matching GEQ level (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`).
+
+Pseudo-subject IDs are encoded as `real_id * 100 + level_index`, e.g. subject 103
+level 1 becomes `10300`.
+
+Caveats:
+
+- Exact level transition timestamps are **not** provided, so the split is an
+  approximation.
+- The three pseudo-subjects of one real person share baseline physiology, so this
+  is closer to "leave-one-level-out" than true subject-independent LOSO.
+
 ### Feature
 A single number extracted from one window. Example: `SDNN` = standard deviation of NN intervals (a time-domain HRV feature).
 
@@ -212,6 +228,7 @@ Example ablations:
 - Turn z-standardisation on/off.
 - Use 60-second vs. 5-minute windows.
 - Compare ECG-only vs. multimodal features.
+- Treat each BIRAFFE2 level as a separate pseudo-subject.
 
 ---
 

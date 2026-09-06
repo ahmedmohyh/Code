@@ -295,6 +295,46 @@ aggregate. `config.yaml` stores the exact configuration used.
 
 ---
 
+## Important note: one label per subject
+
+In BIRAFFE2, each subject has exactly **one global Flow label** for the whole
+recording, even though the GEQ is filled out after each of the three game levels.
+
+For Setup 01 the pipeline reads only `GEQ-1-FLOW-2018` (the Flow score after
+level 1). This single continuous score is converted into a binary label by the
+median split. The same label is then assigned to every 60-second window of that
+subject:
+
+```python
+y = np.full(len(X), fill_value=label, dtype=int)
+```
+
+This means:
+
+- Subject A with label `0` (low flow) contributes, for example, 121 windows,
+  **all labeled `0`**.
+- Subject B with label `1` (high flow) contributes, for example, 118 windows,
+  **all labeled `1`**.
+
+Because all windows in a given LOSO test fold share the same label, the
+window-level AUC is undefined (only one class present in `y_test`). That is why
+the pipeline also performs **subject-level aggregation**: it combines all window
+predictions of one subject into a single subject-level prediction and computes
+the valid subject-level AUC.
+
+**Setup 01b** uses the mean of the three level-specific GEQ Flow scores
+(`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`) as a more session-level
+label, but it is still **one label per subject**.
+
+**Setup 01c** avoids this limitation by reading the GAME START / GAME END times
+from the BIRAFFE2 procedure files, splitting the GAME phase into three equal
+segments, and creating one pseudo-subject per level. The loader functions
+`_load_procedure_times()`, `_find_event_time()`, and `_crop_to_level()` handle
+this. The result is a time-varying label per level, but the split is an
+approximation because exact level transitions are not recorded.
+
+---
+
 ## Summary table
 
 | Step | File | Function / Class | What it does |
@@ -306,6 +346,8 @@ aggregate. `config.yaml` stores the exact configuration used.
 | Read metadata CSV | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_metadata()` | Loads GEQ scores |
 | Return valid subjects | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader.list_subjects()` | Filters 102 valid subjects |
 | Load one subject | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader.load_subject()` | Reads CSV, returns signal + label |
+| Crop to level segment (Setup 01c) | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._crop_to_level()` | Splits GAME phase into 3 equal parts |
+| Read procedure events | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_procedure_times()` | Caches GAME START/END per subject |
 | Create binary labels | `flow_lol/data/labelers/flow_labeler.py` | `FlowLabeler.fit_transform()` | Median split → 0/1 labels |
 | Cache zip contents | `scripts/run_experiment_fast.py` | `_cache_subject()` | Extracts CSVs to `cache/biosigs/` |
 | Cut signal into windows | `flow_lol/segmentation/window_segmenter.py` | `WindowSegmenter.segment()` | 60 s windows, 30 s step |

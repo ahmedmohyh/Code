@@ -170,6 +170,23 @@ subject-level flow score that better represents the player's overall experience 
 the entire recording. This is implemented in the separate config
 `setup_01_biraffe2_ecg_baseline_avg_levels.yaml`.
 
+## Setup 01c — each level as a separate pseudo-subject
+
+Instead of averaging the three level scores, Setup 01c (`setup_01c_biraffe2_ecg_levels_as_subjects.yaml`)
+treats each level as an independent pseudo-subject. It uses the GAME START and GAME END
+timestamps from the BIRAFFE2 procedure files to split the continuous recording into
+three equal-duration segments, then labels each segment with the matching level-specific
+Flow score:
+
+- Segment 1 → `GEQ-1-FLOW-2018`
+- Segment 2 → `GEQ-2-FLOW-2018`
+- Segment 3 → `GEQ-3-FLOW-2018`
+
+This creates up to 306 pseudo-subjects from 102 real subjects and is the closest the
+current pipeline can get to time-varying labels without raw item-level recomputation.
+The exact level boundaries are approximated because BIRAFFE2 does not record when
+level 1 ends and level 2 begins.
+
 ## What Setup 03 should do
 
 Setup 03 (`setup_03_without_time_distortion.yaml`) should recompute the Flow score

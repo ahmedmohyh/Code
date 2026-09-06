@@ -12,6 +12,10 @@ class DatasetConfig:
     metadata_path: str = ""
     modalities: List[str] = field(default_factory=lambda: ["ECG"])
     score_column: Union[str, List[str]] = "GEQ-1-FLOW-2018"
+    # If True, each level in the list score_column becomes a separate pseudo-subject.
+    # Requires BIRAFFE2 procedure files (procedure_path) to locate level segments.
+    treat_levels_as_subjects: bool = False
+    procedure_path: str = ""
 
 
 @dataclass
@@ -26,6 +30,7 @@ class LabelConfig:
 class PreprocessingConfig:
     cleaning_package: str = "neurokit2"
     z_standardise: bool = True
+    per_subject_normalize: bool = False
     outlier_strategy: str = "train_only"
     baseline_correction: str = "none"
     baseline_length_s: int = 60

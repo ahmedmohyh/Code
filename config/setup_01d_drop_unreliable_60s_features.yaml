@@ -1,0 +1,75 @@
+# Setup 01d: drop features that are unreliable from 60-second ECG windows.
+# Tests whether VLF, DFA_alpha2, and noisy frequency features hurt performance.
+
+experiment_name# Setup 01d: drop features that are unreliable from 60-second ECG windows.
+# Tests whether VLF, DFA_alpha2, and noisy frequency features hurt performance.
+# Label = mean of all six Flow scores (3 levels × GEQ-R 2018 + 3 levels × GEQ 2013).
+
+experiment_name: "setup_01d_drop_unreliable_60s_features"
+seed: 42
+
+dataset:
+  name: "BIRAFFE2"
+  path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
+  metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  modalities:
+    - "ECG"
+  # Aggregate all six Flow scores (3 levels × 2013 + 2018) into one subject-level label.
+  score_column:
+    - "GEQ-1-FLOW-2018"
+    - "GEQ-2-FLOW-2018"
+    - "GEQ-3-FLOW-2018"
+    - "GEQ-1-FLOW-2013"
+    - "GEQ-2-FLOW-2013"
+    - "GEQ-3-FLOW-2013"
+
+label:
+  method: "median_split"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "low"
+    - "high"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: true
+  outlier_strategy: "train_only"
+  baseline_correction: "none"
+  baseline_length_s: 60
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency: []   # drop VLF, LF, HF, LF_HF, TP for 60-second windows
+    nonlinear:
+      - "sample_entropy"   # keep only the most reliable nonlinear feature
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+    - "LogisticRegression"
+    - "XGBoost"
+  deep: []
+
+validation:
+  strategy: "LOSO"
+  permutation: false
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"
