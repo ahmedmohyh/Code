@@ -1,0 +1,84 @@
+# Setup 01g: combine Setup 01c (levels as pseudo-subjects) with per-subject
+# normalization. This is the strongest single ECG-only test of whether
+# subject-specific physiology is the bottleneck.
+# Labels are the six level × scoring-version Flow scores (3 GEQ-R 2018 + 3 GEQ 2013),
+# but because treat_levels_as_subjects is true, each level becomes a pseudo-subject
+# and its label is the mean of the 2018 and 2013 scores for that level.
+
+experiment_name: "setup_01g_levels_as_subjects_per_subject_norm"
+seed: 42
+
+dataset:
+  name: "BIRAFFE2"
+  path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
+  metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
+  modalities:
+    - "ECG"
+  score_column:
+    - "GEQ-1-FLOW-2018"
+    - "GEQ-2-FLOW-2018"
+    - "GEQ-3-FLOW-2018"
+    - "GEQ-1-FLOW-2013"
+    - "GEQ-2-FLOW-2013"
+    - "GEQ-3-FLOW-2013"
+  treat_levels_as_subjects: true
+
+label:
+  method: "median_split"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "low"
+    - "high"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: false
+  per_subject_normalize: true
+  outlier_strategy: "train_only"
+  baseline_correction: "none"
+  baseline_length_s: 60
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency:
+      - "VLF"
+      - "LF"
+      - "HF"
+      - "LF_HF"
+      - "TP"
+    nonlinear:
+      - "sample_entropy"
+      - "DFA_alpha1"
+      - "DFA_alpha2"
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+    - "LogisticRegression"
+    - "XGBoost"
+  deep: []
+
+validation:
+  strategy: "LOSO"
+  permutation: false
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"

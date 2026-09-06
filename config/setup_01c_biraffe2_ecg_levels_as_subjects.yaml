@@ -1,0 +1,80 @@
+# Setup 01c: treat each BIRAFFE2 GEQ level as a separate pseudo-subject.
+# The 102 real subjects become up to 306 pseudo-subjects (one per GEQ level).
+# The GAME phase is split into three equal-duration segments; each segment is
+# labelled with the corresponding level-specific GEQ-2018 Flow score.
+
+experiment_name: "setup_01c_biraffe2_ecg_levels_as_subjects"
+seed: 42
+
+dataset:
+  name: "BIRAFFE2"
+  path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
+  metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
+  modalities:
+    - "ECG"
+  score_column:
+    - "GEQ-1-FLOW-2018"
+    - "GEQ-2-FLOW-2018"
+    - "GEQ-3-FLOW-2018"
+  treat_levels_as_subjects: true
+
+label:
+  method: "median_split"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "low"
+    - "high"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: true
+  outlier_strategy: "train_only"
+  baseline_correction: "none"
+  baseline_length_s: 60
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency:
+      - "VLF"
+      - "LF"
+      - "HF"
+      - "LF_HF"
+      - "TP"
+    nonlinear:
+      - "sample_entropy"
+      - "DFA_alpha1"
+      - "DFA_alpha2"
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+    - "SVM"
+    - "kNN"
+    - "LogisticRegression"
+    - "XGBoost"
+  deep: []
+
+validation:
+  strategy: "LOSO"
+  permutation: false
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"

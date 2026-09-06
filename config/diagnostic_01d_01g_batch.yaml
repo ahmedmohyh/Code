@@ -1,0 +1,12 @@
+# YAML batch definition for running multiple ablation configs sequentially.
+# This config only lists which experiment configs to run and in which order.
+# It is consumed by scripts/run_batch_from_config.py.
+
+batch_name: "diagnostic_01d_01g"
+n_jobs: 10
+
+configs:
+  - "config/setup_01d_drop_unreliable_60s_features.yaml"
+  - "config/setup_01e_per_subject_normalization.yaml"
+  - "config/setup_01f_shorter_step.yaml"
+  - "config/setup_01g_levels_as_subjects_per_subject_norm.yaml"

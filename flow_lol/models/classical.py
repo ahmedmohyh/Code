@@ -3,6 +3,7 @@ from typing import Any, Dict, List
 
 import numpy as np
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.svm import SVC
 from sklearn.pipeline import Pipeline
@@ -31,6 +32,14 @@ def build_classifier(name: str, random_state: int = 42, **kwargs) -> Any:
             n_neighbors=kwargs.get("n_neighbors", 5),
             n_jobs=-1,
         )
+    if name == "LogisticRegression":
+        return LogisticRegression(
+            C=kwargs.get("C", 1.0),
+            class_weight="balanced",
+            max_iter=kwargs.get("max_iter", 1000),
+            random_state=random_state,
+            n_jobs=-1,
+        )
     try:
         import xgboost as xgb
         if name == "XGBoost":
@@ -49,7 +58,7 @@ def build_classifier(name: str, random_state: int = 42, **kwargs) -> Any:
 
 
 def list_available_classifiers() -> List[str]:
-    out = ["RandomForest", "SVM", "kNN"]
+    out = ["RandomForest", "SVM", "kNN", "LogisticRegression"]
     try:
         import xgboost  # noqa: F401
         out.append("XGBoost")
