@@ -92,14 +92,20 @@ flow_lol/
   - Subject-level: Accuracy=0.434, F1=0.434, AUC=0.362, n=99
   - Slightly better than single-level Setup 01 (AUC 0.336), but still near chance.
 - ✅ Ran batch ablations Setups 02-05, 07, 09. Subject-level AUCs: 02=0.358, 03=0.336, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Setup 09 (heartpy) achieved the best pure-ECG AUC so far.
-: `config/setup_01c_biraffe2_ecg_levels_as_subjects.yaml`.
-  - `BIRAFFE2Loader` now supports `treat_levels_as_subjects=True`.
+- ✅ Created Setup 01c config: `config/setup_01c_biraffe2_ecg_levels_as_subjects.yaml`.
+  - `BIRAFFE2Loader` now supports `treat_levels_as_subjects=True` for any number of score columns.
   - Reads GAME START/END timestamps from `BIRAFFE2-procedure.zip`.
-  - Splits the GAME phase into three equal segments and labels each with the matching `GEQ-*-FLOW-2018` score.
-  - Produces up to 306 pseudo-subjects from 102 real subjects.
+  - Splits the GAME phase into N equal segments (N = number of score columns) and labels each with the matching score column.
+  - Produces up to 306 pseudo-subjects for three columns or up to 612 for six columns.
   - **Ran and achieved subject-level AUC = 0.630 with RandomForest (n=248 pseudo-subjects).**
   - Other models: XGBoost 0.605, kNN 0.576, LogisticRegression 0.558, SVM 0.537.
 - ✅ Added diagnostic configs 01d, 01e, 01f, 01g, 11, 12 to test weak-AUC assumptions.
+- ✅ Fixed `BIRAFFE2Loader` so `treat_levels_as_subjects` works with six score columns (Setup 01g).
+- ✅ Ran Setup 01g (level-as-subjects + per-subject normalization, six score columns):
+  - Window-level: Accuracy=0.543, F1=0.512, AUC=nan
+  - Subject-level: Accuracy=0.552, F1=0.528, **AUC=0.501** (XGBoost), n=540 pseudo-subjects.
+  - RandomForest subject-level AUC was 0.499 and LogisticRegression 0.077.
+  - Per-subject normalization removes the Setup 01c improvement, suggesting the 01c AUC gain was partly driven by subject-specific baseline physiology rather than true within-person Flow variation.
 
 ## What still needs to be done
 
@@ -131,8 +137,6 @@ flow_lol/
 ## How to proceed
 
 Tell me which of the following you want next:
-- **A.** Run diagnostic configs 01d, 01e, 01f to see what drives the improvement.
-- **B.** Wire code and run Setup 01g (level-as-subjects + per-subject normalization).
-- **C.** Implement proper Setup 03 / Setup 11 (recompute Flow score from raw GEQ items without item 25).
-- **D.** Implement Setup 06 multimodal (ECG + EDA + webcam) by adding EDA and webcam loaders.
-- **E.** Add experiment tracking and a script that runs all configs sequentially and compares them.
+- **A.** Implement proper Setup 03 / Setup 11 (recompute Flow score from raw GEQ items without item 25).
+- **B.** Implement Setup 06 multimodal (ECG + EDA + webcam) by adding EDA and webcam loaders.
+- **C.** Add experiment tracking and a script that runs all configs sequentially and compares them.

@@ -1,4 +1,4 @@
-: 60-second windows with a 10-second step instead of 30 seconds.
+# Setup 01f: 60-second windows with a 10-second step instead of 30 seconds.
 # Tests whether more (but more correlated) windows per subject help the model.
 # Label = mean of all six Flow scores (3 levels × GEQ-R 2018 + 3 levels × GEQ 2013).
 

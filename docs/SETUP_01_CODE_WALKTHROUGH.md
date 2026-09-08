@@ -327,11 +327,12 @@ the valid subject-level AUC.
 label, but it is still **one label per subject**.
 
 **Setup 01c** avoids this limitation by reading the GAME START / GAME END times
-from the BIRAFFE2 procedure files, splitting the GAME phase into three equal
-segments, and creating one pseudo-subject per level. The loader functions
-`_load_procedure_times()`, `_find_event_time()`, and `_crop_to_level()` handle
-this. The result is a time-varying label per level, but the split is an
-approximation because exact level transitions are not recorded.
+from the BIRAFFE2 procedure files, splitting the GAME phase into N equal
+segments (where N equals the number of configured score columns), and creating
+one pseudo-subject per level. The loader functions `_load_procedure_times()`,
+`_find_event_time()`, and `_crop_to_level()` handle this. The result is a
+time-varying label per level, but the split is an approximation because exact
+level transitions are not recorded.
 
 ---
 
@@ -346,7 +347,7 @@ approximation because exact level transitions are not recorded.
 | Read metadata CSV | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_metadata()` | Loads GEQ scores |
 | Return valid subjects | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader.list_subjects()` | Filters 102 valid subjects |
 | Load one subject | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader.load_subject()` | Reads CSV, returns signal + label |
-| Crop to level segment (Setup 01c) | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._crop_to_level()` | Splits GAME phase into 3 equal parts |
+| Crop to level segment (Setup 01c/01g) | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._crop_to_level()` | Splits GAME phase into N equal parts |
 | Read procedure events | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_procedure_times()` | Caches GAME START/END per subject |
 | Create binary labels | `flow_lol/data/labelers/flow_labeler.py` | `FlowLabeler.fit_transform()` | Median split → 0/1 labels |
 | Cache zip contents | `scripts/run_experiment_fast.py` | `_cache_subject()` | Extracts CSVs to `cache/biosigs/` |

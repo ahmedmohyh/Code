@@ -1,9 +1,9 @@
 # Setup 01g: combine Setup 01c (levels as pseudo-subjects) with per-subject
 # normalization. This is the strongest single ECG-only test of whether
 # subject-specific physiology is the bottleneck.
-# Labels are the six level × scoring-version Flow scores (3 GEQ-R 2018 + 3 GEQ 2013),
-# but because treat_levels_as_subjects is true, each level becomes a pseudo-subject
-# and its label is the mean of the 2018 and 2013 scores for that level.
+# Labels are the six level × scoring-version Flow scores (3 GEQ-R 2018 + 3 GEQ 2013).
+# Because treat_levels_as_subjects is true, each of the six score columns becomes a
+# separate pseudo-subject, so one real subject yields up to six pseudo-subjects.
 
 experiment_name: "setup_01g_levels_as_subjects_per_subject_norm"
 seed: 42
@@ -34,8 +34,8 @@ label:
 
 preprocessing:
   cleaning_package: "neurokit2"
-  z_standardise: false
-  per_subject_normalize: true
+  z_standardise: true
+  per_subject_normalize: false
   outlier_strategy: "train_only"
   baseline_correction: "none"
   baseline_length_s: 60
