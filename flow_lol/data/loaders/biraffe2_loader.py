@@ -25,10 +25,11 @@ class BIRAFFE2Loader:
     -------------
     * ``treat_levels_as_subjects=False``, ``score_column`` is a single column or a list:
       a list is averaged into one label per subject.
-    * ``treat_levels_as_subjects=True``, ``score_column`` must be a list of three columns:
-      each level is treated as an independent pseudo-subject.  The GAME phase of the
-      recording is split into three equal-duration segments and each segment receives
-      the label from the corresponding GEQ level.
+    * ``treat_levels_as_subjects=True``, ``score_column`` must be a list of columns:
+      each column is treated as an independent pseudo-subject level.  The GAME phase of
+      the recording is split into ``N`` equal-duration segments, where ``N`` is the
+      number of score columns, and each segment receives the label from the corresponding
+      GEQ level.
     """
 
     def __init__(self, config: DatasetConfig, cache_dir: Optional[str] = None):
@@ -140,19 +141,27 @@ class BIRAFFE2Loader:
         return [self.config.score_column]
 
     def _level_count(self) -> int:
-        return 3 if getattr(self.config, "treat_levels_as_subjects", False) else 1
+        """Return number of pseudo-subject levels.
+
+        In level-as-subjects mode this equals the number of score columns,
+        allowing any number of levels (e.g. 3 or 6). Otherwise it is 1.
+        """
+        if not getattr(self.config, "treat_levels_as_subjects", False):
+            return 1
+        return len(self._score_columns())
 
     def _pseudo_to_real(self, pseudo_id: int) -> Tuple[int, int]:
         """Decode pseudo subject ID into (real_subject_id, level_index).
 
-        Uses a stable 3-level scheme: pseudo_id = real_id * 100 + level_index.
+        Uses a stable scheme: pseudo_id = real_id * 1000 + level_index.
+        1000 is chosen to support up to 999 levels per subject.
         """
-        real_id = pseudo_id // 100
-        level = pseudo_id % 100
+        real_id = pseudo_id // 1000
+        level = pseudo_id % 1000
         return real_id, level
 
     def _real_to_pseudo(self, real_id: int, level: int) -> int:
-        return real_id * 100 + level
+        return real_id * 1000 + level
 
     def _get_label(self, row: pd.DataFrame, level: Optional[int] = None) -> float:
         """Read label for a subject/level.
@@ -198,10 +207,6 @@ class BIRAFFE2Loader:
                 continue
 
             if level_mode:
-                if len(cols) != n_levels:
-                    raise ValueError(
-                        "treat_levels_as_subjects requires exactly three score_column entries"
-                    )
                 for level in range(n_levels):
                     if not pd.isna(row[cols[level]].values[0]):
                         valid_ids.append(self._real_to_pseudo(sid, level))
@@ -272,16 +277,17 @@ class BIRAFFE2Loader:
         }
 
     def _crop_to_level(self, signal: pd.DataFrame, real_id: int, level: int) -> pd.DataFrame:
-        """Return the signal segment corresponding to GEQ level ``level`` (0,1,2).
+        """Return the signal segment corresponding to GEQ level ``level``.
 
         Strategy
         --------
         1. Look up GAME START / GAME END from the procedure file.
-        2. Split GAME START -> GAME END into three equal-duration chunks.
+        2. Split GAME START -> GAME END into N equal-duration chunks, where N is
+           the number of score columns (levels).
         3. Return the chunk for ``level``.
 
         If no procedure times are available, fall back to splitting the whole
-        available recording into three equal parts.
+        available recording into N equal parts.
         """
         ts = signal["TIMESTAMP"].to_numpy(dtype=float)
         t_min, t_max = float(ts.min()), float(ts.max())
@@ -298,9 +304,10 @@ class BIRAFFE2Loader:
         if end <= start:
             return signal.iloc[0:0].copy()
 
+        n_levels = self._level_count()
         duration = end - start
-        level_start = start + level * (duration / 3.0)
-        level_end = start + (level + 1) * (duration / 3.0)
+        level_start = start + level * (duration / n_levels)
+        level_end = start + (level + 1) * (duration / n_levels)
 
         mask = (ts >= level_start) & (ts < level_end)
         if not mask.any():

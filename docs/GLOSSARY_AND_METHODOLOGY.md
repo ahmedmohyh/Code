@@ -25,21 +25,23 @@ The flow-state class assigned to a subject. In BIRAFFE2 there is **one global fl
 - `0` = low flow
 - `1` = high flow
 
-### Pseudo-subject (Setup 01c)
+### Pseudo-subject (Setups 01c and 01g)
 In **level-as-subjects** mode, each real BIRAFFE2 subject is expanded into up to
-three pseudo-subjects — one per game level. The GAME phase is split into three
-equal-duration segments, and each segment receives the Flow score from the
-matching GEQ level (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`).
+N pseudo-subjects — one per configured score column. The GAME phase is split
+into N equal-duration segments, and each segment receives the Flow score from
+the matching score column. Setup 01c uses N=3 (`GEQ-1-FLOW-2018`,
+`GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`). Setup 01g uses N=6 by adding the three
+GEQ 2013 Flow scores.
 
-Pseudo-subject IDs are encoded as `real_id * 100 + level_index`, e.g. subject 103
-level 1 becomes `10300`.
+Pseudo-subject IDs are encoded as `real_id * 1000 + level_index`, e.g. subject 103
+level 1 becomes `103001`. The factor 1000 supports up to 999 levels per subject.
 
 Caveats:
 
 - Exact level transition timestamps are **not** provided, so the split is an
   approximation.
-- The three pseudo-subjects of one real person share baseline physiology, so this
-  is closer to "leave-one-level-out" than true subject-independent LOSO.
+- The pseudo-subjects of one real person share baseline physiology, so this is
+  closer to "leave-one-level-out" than true subject-independent LOSO.
 
 ### Feature
 A single number extracted from one window. Example: `SDNN` = standard deviation of NN intervals (a time-domain HRV feature).

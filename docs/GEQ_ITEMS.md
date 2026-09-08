@@ -187,6 +187,12 @@ current pipeline can get to time-varying labels without raw item-level recomputa
 The exact level boundaries are approximated because BIRAFFE2 does not record when
 level 1 ends and level 2 begins.
 
+Setup 01g (`setup_01g_levels_as_subjects_per_subject_norm.yaml`) extends this
+design to six score columns by adding the three GEQ 2013 Flow scores. The loader
+now supports any number of score columns in level-as-subjects mode, so the GAME
+phase is split into six equal-duration segments and one real subject can yield
+up to 612 pseudo-subjects.
+
 ## What Setup 03 should do
 
 Setup 03 (`setup_03_without_time_distortion.yaml`) should recompute the Flow score

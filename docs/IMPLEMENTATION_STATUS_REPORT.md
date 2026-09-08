@@ -20,7 +20,7 @@ datasets.
 |-----------|--------|-------|
 | Config system (YAML → dataclass) | ✅ Done | One config per ablation setup |
 | BIRAFFE2 ECG loader | ✅ Done | Reads zip + metadata, caches CSVs |
-| Level-as-subjects mode | ✅ Done | Splits GAME phase into 3 equal segments; creates pseudo-subjects |
+| Level-as-subjects mode | ✅ Done | Splits GAME phase into N equal segments (N = score columns); creates pseudo-subjects |
 | Setup 01c run | ✅ Done | RandomForest AUC 0.630 on 248 pseudo-subjects |
 | Label creation (median split + margin band) | ✅ Done | `FlowLabeler` with tunable margin |
 | ECG cleaning (neurokit2 / heartpy / biosppy stubs) | ✅ Partial | neurokit2 and heartpy work; biosppy stub not wired |
@@ -54,6 +54,7 @@ All setups below have been executed end-to-end on BIRAFFE2.
 | 07 5-min window | 300 s fixed window | 0.237 | 90 |
 | 09 heartpy | heartpy ECG cleaning/features | 0.396 | 100 |
 | 01c level-as-subjects | 3 pseudo-subjects per real subject | **0.630** | 248 |
+| 01g level-as-subjects + per-subject norm | 6 pseudo-subjects per real subject | 0.501 | 540 |
 
 : **Setup 01c (RandomForest, level-as-subjects)** with AUC **0.630**.
 This represents a substantial improvement over the previous ceiling of ~0.40 and
@@ -61,6 +62,14 @@ suggests that label misalignment and the single-label-per-subject limitation wer
 major bottlenecks, not just weak ECG signal. The caveat is that pseudo-subjects from
 the same real person still share baseline physiology, so this is closer to
 "leave-one-level-out" than true cross-person generalisation.
+
+**Setup 01g** combines the level-as-subjects design with per-subject normalization
+and six score columns (3 GEQ-R 2018 + 3 GEQ 2013). It produced subject-level AUC
+**0.501** on 540 pseudo-subjects. This near-chance result indicates that per-subject
+normalization in pseudo-subject mode removes much of the improvement seen in 01c;
+the 01c AUC gain appears to have relied partly on subject-specific baseline
+physiology (between-subject variance) rather than genuine within-person Flow
+variation.
 
 ---
 
@@ -196,14 +205,19 @@ features.
 
 ### Problem 1: Pure ECG/HRV is a weak flow predictor in BIRAFFE2
 
-**Evidence:** All ECG-only setups are at or below chance. Best AUC = 0.396
-(heartpy). 5-minute window is worse (AUC 0.237).
+**Evidence:** Most ECG-only setups are at or below chance. The apparent exception,
+Setup 01c (level-as-subjects), reached AUC = 0.630, but Setup 01g shows that this
+drops to 0.501 when per-subject normalization is applied to the same pseudo-subject
+design. The best strict person-level ECG-only result remains Setup 09 (heartpy)
+at AUC = 0.396. 5-minute window is worse (AUC 0.237).
 
 **Interpretation:** Either
 - the physiological signal does not strongly covary with the GEQ Flow score in
   this dataset, or
 - the single-label-per-subject design and across-subject physiology variance make
   the task very hard, or
+- the apparent 01c improvement was partly driven by stable subject-specific
+  baselines rather than within-person Flow variation, or
 - the relevant information is in other modalities (EDA, webcam, EEG) or in
   temporal dynamics.
 
@@ -258,6 +272,11 @@ cross-subject flow signal is weak.
 - Use within-subject designs if the dataset allows.
 - Add more discriminative modalities (EDA, EEG, webcam).
 
+**Updated evidence:** Setup 01g applied per-subject normalization within the
+level-as-subjects design and produced AUC 0.501. This confirms that
+subject-specific physiology is a major information source: removing it causes
+the 01c improvement to collapse.
+
 ### Problem 5: Webcam features in BIRAFFE2 are not raw video
 
 **Evidence:** BIRAFFE2 provides pre-computed webcam affect estimates, not raw
@@ -277,7 +296,7 @@ live prototype (which will use raw webcam), but its performance is weak.
 
 | Priority | Task | Expected impact | Effort |
 |----------|------|-----------------|--------|
-| 0 | Run Setup 01c (level-as-subjects) | Tests whether time-varying labels improve performance | Low |
+| 0 | Implement proper Setup 03 from raw GEQ items | Satisfies supervisor comment; tests another label variant | Low |
 | 1 | Implement proper Setup 03 from raw GEQ items | Satisfies supervisor comment; tests another label variant | Low |
 | 2 | Implement EDA loader + features for Setup 06 | High — first real multimodal test | Medium |
 | 3 | Implement webcam loader for Setup 06 | High — adds behavioural signal | Medium |
@@ -294,14 +313,10 @@ live prototype (which will use raw webcam), but its performance is weak.
 
 Before continuing, two choices should be made:
 
-1. **Should I run Setup 01c now?** It is fully implemented and will take the
-   same time as Setup 01 (~minutes on your machine). This directly tests whether
-   level-specific physiology helps.
-
-2. **Should Setup 03 use raw GEQ item recomputation and also average across the
+1. **Should Setup 03 use raw GEQ item recomputation and also average across the
    three levels?** This is a small code change but affects the label semantics.
 
-3. **Should the next big effort go into Setup 06 (multimodal BIRAFFE2: ECG + EDA
+2. **Should the next big effort go into Setup 06 (multimodal BIRAFFE2: ECG + EDA
    + webcam) or into Setup 08 (Irshad/PhySF with EEG)?** Both are promising, but
    Setup 06 is closer to the planned live prototype (ECG + webcam).
 

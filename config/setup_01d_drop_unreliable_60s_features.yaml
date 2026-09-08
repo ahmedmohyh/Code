@@ -1,8 +1,5 @@
 # Setup 01d: drop features that are unreliable from 60-second ECG windows.
 # Tests whether VLF, DFA_alpha2, and noisy frequency features hurt performance.
-
-experiment_name# Setup 01d: drop features that are unreliable from 60-second ECG windows.
-# Tests whether VLF, DFA_alpha2, and noisy frequency features hurt performance.
 # Label = mean of all six Flow scores (3 levels × GEQ-R 2018 + 3 levels × GEQ 2013).
 
 experiment_name: "setup_01d_drop_unreliable_60s_features"
