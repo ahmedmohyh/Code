@@ -55,6 +55,7 @@ All setups below have been executed end-to-end on BIRAFFE2.
 | 09 heartpy | heartpy ECG cleaning/features | 0.396 | 100 |
 | 01c level-as-subjects | 3 pseudo-subjects per real subject | **0.630** | 248 |
 | 01g level-as-subjects + per-subject norm | 6 pseudo-subjects per real subject | 0.501 | 540 |
+| 01g variant (no per-subject norm, z-score) | 6 pseudo-subjects per real subject | 0.551 | 460 |
 
 : **Setup 01c (RandomForest, level-as-subjects)** with AUC **0.630**.
 This represents a substantial improvement over the previous ceiling of ~0.40 and
@@ -148,7 +149,8 @@ stubs. Feature extraction supports neurokit2 and heartpy.
 - Document package-specific differences.
 
 **Why it matters:** Supervisor comments #6 and #7 ask for cross-package
-comparison.
+comparison. Comment #6 (heartpy) is already covered by Setup 09; comment #7
+(biosppy) is still missing.
 
 ### 3.6 Permutation analysis
 
@@ -296,29 +298,34 @@ live prototype (which will use raw webcam), but its performance is weak.
 
 | Priority | Task | Expected impact | Effort |
 |----------|------|-----------------|--------|
-| 0 | Implement proper Setup 03 from raw GEQ items | Satisfies supervisor comment; tests another label variant | Low |
-| 1 | Implement proper Setup 03 from raw GEQ items | Satisfies supervisor comment; tests another label variant | Low |
+| 0 | Implement proper Setup 11 — raw GEQ Flow without Time Distortion | Satisfies comment #3; tests another label variant | Low |
+| 1 | Implement Setup 12 — BIRAFFE2 baseline correction from procedure files | Satisfies comment #5; reduces subject-specific variance | Medium |
 | 2 | Implement EDA loader + features for Setup 06 | High — first real multimodal test | Medium |
 | 3 | Implement webcam loader for Setup 06 | High — adds behavioural signal | Medium |
-| 4 | Implement BIRAFFE2 baseline correction | High — reduces subject-specific variance | Medium |
+| 4 | Implement Setup 08 — Irshad/PhySF loader with EEG | Satisfies comment #9; only EEG dataset | Medium |
 | 5 | Build ablation comparison table script | Medium — thesis-grade overview | Low |
-| 6 | Wire permutation analysis | Medium — feature importance | Low |
-| 7 | Implement Irshad/PhySF loader (Setup 08) | Medium/High — EEG data | Medium |
-| 8 | Wire deep learning models (Setup 10) | Medium — temporal / nonlinear patterns | High |
+| 6 | Wire permutation analysis | Satisfies comment #10; feature importance | Low |
+| 7 | Add biosppy ECG path | Satisfies comment #7; cross-package comparison | Low |
+| 8 | Wire deep learning models (Setup 10) | Satisfies comment #0; temporal/nonlinear patterns | High |
 | 9 | Real-time prototype | Depends on offline model quality | High |
 
 ---
 
 ## 6. Immediate decision needed
 
-Before continuing, two choices should be made:
+Before continuing, decide which task to tackle first:
 
-1. **Should Setup 03 use raw GEQ item recomputation and also average across the
-   three levels?** This is a small code change but affects the label semantics.
+1. **Setup 11 / raw GEQ recomputation without Time Distortion (comment #3)** —
+   small, contained, tests a different label definition.
 
-2. **Should the next big effort go into Setup 06 (multimodal BIRAFFE2: ECG + EDA
-   + webcam) or into Setup 08 (Irshad/PhySF with EEG)?** Both are promising, but
-   Setup 06 is closer to the planned live prototype (ECG + webcam).
+2. **Setup 12 / BIRAFFE2 baseline correction from procedure files (comment #5)** —
+   medium, tests whether removing subject-specific physiology helps.
+
+3. **Setup 06 / multimodal ECG + EDA + webcam (comment #12)** — larger, but
+   closest to the planned live prototype and most likely to improve AUC.
+
+4. **Build the ablation comparison table script** — low effort, gives an overview
+   of all current results to guide the next experiments.
 
 ---
 

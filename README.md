@@ -233,7 +233,7 @@ python scripts/run_experiment_fast.py --config config/setup_01c_biraffe2_ecg_lev
 python scripts/run_batch_from_config.py --batch config/diagnostic_01d_01g_batch.yaml
 ```
 
-Result: RandomForest achieved subject-level AUC **0.630** on 248 valid pseudo-subjects, far above the previous pure-ECG ceiling of ~0.40. However, Setup 01g (same design plus per-subject normalization and six score columns) dropped to AUC **0.501**, suggesting that a large part of the 01c gain came from subject-specific baseline physiology rather than true within-person Flow variation.
+Result: RandomForest achieved subject-level AUC **0.630** on 248 valid pseudo-subjects, far above the previous pure-ECG ceiling of ~0.40. Setup 01g originally dropped to **0.501** when per-subject normalization was applied, but a re-run with per-subject normalization off and z-standardisation on recovered to **0.551** (n=460). This confirms that subject-specific baseline physiology is a major driver of the 01c improvement, while adding the 2013 scoring version does not beat the 3-column 01c result.
 
 ### New diagnostic configs (added to cover weak-AUC assumptions)
 
@@ -244,11 +244,12 @@ To diagnose why pure ECG/HRV gives poor Flow prediction, the following configs w
 | 01d | Are short-window features adding noise? | 102 | Label = mean of 6 Flow scores (3 levels × 2013 + 2018) |
 | 01e | Does per-subject normalization help LOSO generalisation? | 102 | Label = mean of 6 Flow scores (3 levels × 2013 + 2018) |
 | 01f | Does a shorter step / more windows help? | 102 | Label = mean of 6 Flow scores (3 levels × 2013 + 2018) |
-| 01g | Does combining level-as-subjects with per-subject normalization help? | 540 pseudo-subjects | AUC = 0.501; per-subject norm removes the benefit |
+| 01g | Level-as-subjects + per-subject normalization | 540 pseudo-subjects | AUC = 0.501; per-subject norm removes the benefit |
+| 01g variant | Level-as-subjects + z-standardise (no per-subject norm) | 460 pseudo-subjects | AUC = 0.551; confirms subject-baseline effect |
 | 11  | Does removing Time Distortion from the Flow score change results? | 102 | Not wired yet |
 | 12  | Does baseline correction from the resting segment help? | 102 | Not wired yet |
 
-All diagnostic configs 01d–01g have been run. 01g produced 540 pseudo-subjects with subject-level AUC = 0.501, i.e. near chance. This indicates that per-subject normalization in pseudo-subject mode cancels the improvement seen in Setup 01c (AUC 0.630), probably because the model was exploiting stable, subject-specific physiological baselines rather than true within-person Flow variation. Configs 11 and 12 still require raw-GEQ and baseline-extraction implementation.
+All diagnostic configs 01d–01g have been run. 01g produced 540 pseudo-subjects with subject-level AUC = 0.501 when per-subject normalization was applied, and 0.551 when it was disabled (n=460). This indicates that subject-specific physiological baselines are a major information source; removing them largely cancels the Setup 01c improvement. Adding the GEQ 2013 scores on top of 2018 scores does not outperform the 3-column 01c design. Configs 11 and 12 still require raw-GEQ and baseline-extraction implementation.
 
 ## Current status
 
@@ -275,7 +276,8 @@ All diagnostic configs 01d–01g have been run. 01g produced 540 pseudo-subjects
 | 01 single-level | 0.394 | 0.376 | 0.336 | 99 | Baseline |
 | 01b avg-levels | 0.434 | 0.434 | 0.362 | 99 | Averaged 3-level label |
 | 01c level-as-subjects | 0.593 | 0.593 | **0.630** | 248 | Best AUC so far; time-varying labels help |
-| 01g level-as-subjects + per-subject norm | 0.552 | 0.528 | 0.501 | 540 | XGBoost 0.501; RF 0.499; per-subject norm removes the 01c benefit |
+| 01g level-as-subjects + per-subject norm | 0.552 | 0.528 | 0.501 | 540 | Original 01g: per-subject norm removes the 01c benefit |
+| 01g variant (z-score, no per-subj norm) | 0.546 | 0.545 | 0.551 | 460 | Recovers AUC; subject baselines matter |
 | 02 margin 0.1 | 0.478 | 0.452 | 0.358 | 92 | Excludes 8 near-median subjects |
 | 03 no time dist. | 0.394 | 0.376 | 0.336 | 99 | Still uses pre-aggregated column; needs raw items |
 | 04 no z-score | 0.394 | 0.380 | 0.336 | 99 | Worse than with z-score |
@@ -296,9 +298,10 @@ All diagnostic configs 01d–01g have been run. 01g produced 540 pseudo-subjects
 Takeaway: the level-as-subjects design (time-varying labels) substantially improves AUC
 from ~0.40 to **0.630** with RandomForest. This suggests that label misalignment and the
 single-label-per-subject limitation were major bottlenecks, not just weak ECG signal.
-However, Setup 01g shows that adding per-subject normalization drops AUC to 0.501, which
-means a large part of the 01c improvement was likely driven by subject-specific baseline
-physiology (between-subject variance) rather than genuine within-person Flow variation.
-The three/six pseudo-subjects per real person still share baseline physiology, so 01c is
+Both 01g runs show that removing subject-specific baselines (via per-subject
+normalization) or adding more pseudo-subjects from the same person does not improve
+over 01c. The 0.630 AUC in 01c is therefore likely driven largely by between-subject
+physiology exposed by the pseudo-subject split, not by genuine within-person Flow
+variation. The pseudo-subjects per real person still share baseline physiology, so 01c is
 closer to "leave-one-level-out" than true cross-person generalisation.
 
