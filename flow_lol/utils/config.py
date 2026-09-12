@@ -16,6 +16,13 @@ class DatasetConfig:
     # Requires BIRAFFE2 procedure files (procedure_path) to locate level segments.
     treat_levels_as_subjects: bool = False
     procedure_path: str = ""
+    # Raw GEQ item recomputation (Setup 03 / Setup 11).
+    # If recompute_flow_from_items is True, the loader reads raw item CSVs from
+    # raw_geq_dir and recomputes the Flow score per level instead of using the
+    # pre-aggregated metadata column. exclude_time_distortion drops item 25.
+    raw_geq_dir: str = ""
+    recompute_flow_from_items: bool = False
+    exclude_time_distortion: bool = False
 
 
 @dataclass
@@ -34,6 +41,7 @@ class PreprocessingConfig:
     outlier_strategy: str = "train_only"
     baseline_correction: str = "none"
     baseline_length_s: int = 60
+    baseline_from_procedure: bool = False
 
 
 @dataclass

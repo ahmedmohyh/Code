@@ -11,6 +11,9 @@ dataset:
   modalities:
     - "ECG"
   score_column: "GEQ-1-FLOW-2018"
+  raw_geq_dir: "../dataset/data/BIRAFFE2/Version 2"
+  recompute_flow_from_items: true
+  exclude_time_distortion: true
   items: "without_time_distortion"
 
 label:

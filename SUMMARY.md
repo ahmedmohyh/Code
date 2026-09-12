@@ -1,6 +1,6 @@
 # Implementation Summary
 
-**Date:** 2026-09-06
+**Date:** 2026-09-09
 **Repo:** `C:\Users\user\Downloads\Masterthesis\Code`
 **Branch:** `master`
 
@@ -111,6 +111,12 @@ flow_lol/
   - Window-level: Accuracy=0.532, F1=0.473, AUC=nan
   - Subject-level: Accuracy=0.546, F1=0.545, **AUC=0.551**, n=460 pseudo-subjects.
   - Confirms that removing per-subject normalization recovers much of the AUC, but adding 2013 columns does not beat the 3-column 01c result (AUC 0.630).
+- ✅ Implemented and ran corrected Setups 03 / 11 (recompute Flow from raw GEQ items excluding item 25):
+  - Fixed `_compute_raw_flow_score` to subtract 1.0, matching the BIRAFFE2 pre-computed `mean(items) - 1` scale.
+  - Setup 03 (RandomForest): subject-level Accuracy=0.424, F1=0.400, **AUC=0.298**, n=99.
+  - Setup 11 (LogisticRegression best): subject-level Accuracy=0.394, F1=0.386, **AUC=0.299**, n=99; RandomForest 0.298, XGBoost 0.268.
+  - Removing Time Distortion clearly hurts ECG-based Flow prediction; the low AUC is not a scaling bug.
+- ✅ Created `scripts/build_ablation_table.py` and regenerated `results/ablation_comparison.md` / `.csv` with all runnable setups.
 
 ## Unified To-Do List — Cover All Supervisor Comments + Missing Setups
 
@@ -120,7 +126,7 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 | # | Task | Supervisor comment | Status | What exactly needs to be done |
 |---|------|--------------------|--------|------------------------------|
-| 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ❌ Not done | Read raw GEQ CSVs per level, compute Flow from items 5, 13, 28, 31, create `setup_11_raw_geq_without_time_distortion.yaml`, run it |
+| 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Ran and verified: RF AUC 0.298, LR AUC 0.299, XGB 0.268, n=99. Raw scoring fixed to `mean(items) - 1` |
 | 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ❌ Not done | Extract baseline/resting timestamps from procedure files, compute baseline HRV, apply change-score or quotient correction, create config, run it |
 | 3 | Setup 06 — multimodal ECG + EDA + webcam | 12 | 🔄 Config only | Implement EDA loader + cleaning/features, implement webcam/affect loader, combine all features in runner, run `setup_06_full_multimodal.yaml` |
 | 4 | Setup 08 — Irshad/PhySF loader with EEG | 9 | 🔄 Config only | Confirm dataset format/path, implement loader with ECG + EDA + EEG + baseline correction, run it |
@@ -137,7 +143,7 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 | # | Task | Why | Status | What exactly needs to be done |
 |---|------|-----|--------|------------------------------|
-| 8 | Ablation comparison table script | Thesis overview | ❌ Not done | Read all `results/*/metrics.json`, generate one Markdown/CSV table with all setups, models, AUCs, n |
+| 8 | Ablation comparison table script | Thesis overview | ✅ Done | `scripts/build_ablation_table.py` writes `results/ablation_comparison.md` and `.csv` |
 | 9 | Visualisations | Thesis quality | ❌ Not done | Confusion matrices, feature importance plots, learning curves |
 | 10 | Document baseline-length limitations | Methodology clarity | ❌ Not done | Add section in GLOSSARY/SETUP docs explaining 60s HRV and EEG baseline limits |
 
@@ -148,8 +154,8 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 2. ✅ Created averaged-levels config `setup_01_biraffe2_ecg_baseline_avg_levels.yaml`.
 3. ✅ Updated README, GLOSSARY_AND_METHODOLOGY, and GEQ_ITEMS docs.
 4. ✅ Ran `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` and compared with single-level Setup 01.
-5. ✅ Ran Setup 02–05 / 07 / 09 configs that require no new loaders. Subject-level AUCs: 02=0.358, 03=0.336, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Best pure-ECG result is heartpy (Setup 09).
-6. ❌ Implement proper Setup 03: recompute Flow score from raw GEQ items excluding item 25.
+5. ✅ Ran Setup 02 / 04 / 05 / 07 / 09 configs that require no new loaders. Subject-level AUCs: 02=0.358, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Best pure-ECG result is heartpy (Setup 09).
+6. ✅ Implemented and ran corrected Setups 03 / 11: recompute Flow score from raw GEQ items excluding item 25, with fixed `mean(items) - 1` scoring. Setup 03 RF AUC=0.298; Setup 11 best LR AUC=0.299, RF=0.298, XGB=0.268 (n=99).
 
 ### Short-term (complete the 10 setups)
 4. ❌ Implement BIRAFFE2 webcam loader (`flow_lol/data/loaders/biraffe2_face_loader.py`).
@@ -163,15 +169,11 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 ### Medium-term (thesis-grade quality)
 12. ❌ Add experiment tracking (MLflow or local CSV).
-13. ❌ Generate ablation comparison table across all 10 setups.
+13. ✅ Generate ablation comparison table across all runnable setups.
 14. ❌ Add visualisations (confusion matrices, feature importance, learning curves).
 15. ❌ Write unit tests for each preprocessing component.
 16. ❌ Document baseline-length limitations for HRV/EEG.
 
 ## How to proceed
 
-Tell me which of the following you want next:
-- **A.** Implement proper Setup 03 / Setup 11 (recompute Flow score from raw GEQ items without item 25).
-- **B.** Implement Setup 12 (BIRAFFE2 baseline correction from procedure-file resting segment).
-- **C.** Implement Setup 06 multimodal (ECG + EDA + webcam) by adding EDA and webcam loaders.
-- **D.** Implement the ablation comparison table script first, so we can see all current results in one place.
+Next recommended step: **B.** Implement and run Setup 12 (BIRAFFE2 baseline correction from procedure-file resting segment). This is the next highest-priority supervisor comment (#5) and the most likely to reveal whether subject-specific physiology is masking a real flow signal.
