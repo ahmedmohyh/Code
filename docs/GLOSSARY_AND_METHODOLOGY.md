@@ -25,21 +25,33 @@ The flow-state class assigned to a subject. In BIRAFFE2 there is **one global fl
 - `0` = low flow
 - `1` = high flow
 
-### Pseudo-subject (Setups 01c and 01g)
+
+### Pseudo-subject (Setups 01c, 01g, 03, 11)
 In **level-as-subjects** mode, each real BIRAFFE2 subject is expanded into up to
-N pseudo-subjects — one per configured score column. The GAME phase is split
-into N equal-duration segments, and each segment receives the Flow score from
-the matching score column. Setup 01c uses N=3 (`GEQ-1-FLOW-2018`,
-`GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`). Setup 01g uses N=6 by adding the three
-GEQ 2013 Flow scores.
+N pseudo-subjects — one per configured level. The GAME phase (from `GAME START`
+to `GAME END` in the procedure file) is split into **N equal-duration segments**,
+and each segment receives the Flow score from the matching level:
+
+- Segment 1 = first 1/N of GAME phase → label from level 1
+- Segment 2 = second 1/N of GAME phase → label from level 2
+- Segment N = last 1/N of GAME phase → label from level N
+
+For Setup 01c this means N=3 (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`,
+`GEQ-3-FLOW-2018`). Setup 01g uses N=6 by adding the three GEQ 2013 Flow scores.
+Setups 03 and 11 also use N=3, but the scores are recomputed from raw items
+excluding item 25. Setup 12 uses N=3 with baseline correction from the resting
+segment and achieved AUC 0.691, the best result so far.
 
 Pseudo-subject IDs are encoded as `real_id * 1000 + level_index`, e.g. subject 103
 level 1 becomes `103001`. The factor 1000 supports up to 999 levels per subject.
 
 Caveats:
 
-- Exact level transition timestamps are **not** provided, so the split is an
-  approximation.
+- **Exact level boundaries are not recorded.** The procedure file only has
+  `GAME START` and `GAME END`, not `LEVEL 1 END` / `LEVEL 2 START`. The
+  equal-duration split is therefore an approximation: the biosignal assigned to
+  pseudo-subject "level 1" is the first third of the GAME phase, not necessarily
+  the exact physiological segment of level 1.
 - The pseudo-subjects of one real person share baseline physiology, so this is
   closer to "leave-one-level-out" than true subject-independent LOSO.
 
@@ -203,7 +215,7 @@ Removing windows whose feature values fall far outside the inter-quartile range.
 - `full_data`: compute thresholds on train + test (information leakage; only for sensitivity checks).
 
 ### Baseline correction
-Subtracting or dividing by a resting/baseline segment to remove individual physiological differences. Not used in Setup 01.
+Subtracting or dividing by a resting/baseline segment to remove individual physiological differences. Not used in Setup 01. Implemented in Setup 12 via the BIRAFFE2 `BASELINE START` / `BASELINE END` events; change-score correction (`window − baseline`) produced AUC 0.691, the best result so far.
 
 ---
 

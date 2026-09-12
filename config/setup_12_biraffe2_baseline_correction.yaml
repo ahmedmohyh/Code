@@ -12,7 +12,11 @@ dataset:
   procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
   modalities:
     - "ECG"
-  score_column: "GEQ-1-FLOW-2018"
+  score_column:
+    - "GEQ-1-FLOW-2018"
+    - "GEQ-2-FLOW-2018"
+    - "GEQ-3-FLOW-2018"
+  treat_levels_as_subjects: true
 
 label:
   method: "median_split"
@@ -58,6 +62,8 @@ models:
     - "RandomForest"
     - "LogisticRegression"
     - "XGBoost"
+    - "kNN"
+    - "SVM"
   deep: []
 
 validation:

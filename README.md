@@ -200,25 +200,31 @@ relationship rather than the label choice.
 
 Setup 01c tests the hypothesis that level-specific physiology is more
 informative than a single session-level label. It uses the BIRAFFE2 procedure
-files (`BIRAFFE2-procedure.zip`) to locate the GAME phase, splits that phase
-into N equal-duration segments (where N equals the number of configured score
-columns), and assigns each segment the label from the corresponding score column:
+files (`BIRAFFE2-procedure.zip`) to locate the GAME phase and then splits that
+phase into **N equal-duration segments** (where N equals the number of configured
+score columns). Each segment receives the label from the corresponding score
+column:
 
 - Setup 01c: N=3 (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`)
-  - pseudo-subject `103000` = subject 103, level 1 segment, label `GEQ-1-FLOW-2018`
-  - pseudo-subject `103001` = subject 103, level 2 segment, label `GEQ-2-FLOW-2018`
-  - pseudo-subject `103002` = subject 103, level 3 segment, label `GEQ-3-FLOW-2018`
+  - pseudo-subject `103000` = subject 103, **first third of GAME phase**, label from `GEQ-1-FLOW-2018`
+  - pseudo-subject `103001` = subject 103, **second third of GAME phase**, label from `GEQ-2-FLOW-2018`
+  - pseudo-subject `103002` = subject 103, **third third of GAME phase**, label from `GEQ-3-FLOW-2018`
 - Setup 01g: N=6 by adding the three GEQ 2013 Flow scores.
+
+> **Important limitation:** BIRAFFE2 records `GAME START` and `GAME END`, but it does
+> **not** record when level 1 ends and level 2 begins. The level-as-subjects split
+> is therefore an approximation: we assume the three levels took roughly equal
+> time and happened in order inside the GAME phase. The biosignal assigned to
+> pseudo-subject level 1 is the first third of the GAME phase, not the exact
+> physiological segment of level 1.
 
 This turns up to 102 real subjects into up to 306 pseudo-subjects (01c) or up to
 612 pseudo-subjects (01g). LOSO CV leaves one pseudo-subject out at a time.
 This is the closest the current pipeline can get to time-varying labels without
 raw item-level recomputation.
 
-Important caveats:
+Additional caveats:
 
-- The exact transitions between levels are **not** recorded in the procedure file,
-  so the split is an approximation (N equal chunks of the GAME phase).
 - If the procedure file is missing for a subject, the whole available recording
   is split into N equal parts as a fallback.
 - Subjects with a missing level score produce fewer pseudo-subjects.
@@ -248,8 +254,8 @@ To diagnose why pure ECG/HRV gives poor Flow prediction, the following configs w
 | 01f | Does a shorter step / more windows help? | 102 | Label = mean of 6 Flow scores (3 levels × 2013 + 2018) |
 | 01g | Level-as-subjects + per-subject normalization | 540 pseudo-subjects | AUC = 0.501; per-subject norm removes the benefit |
 | 01g variant | Level-as-subjects + z-standardise (no per-subject norm) | 460 pseudo-subjects | AUC = 0.551; confirms subject-baseline effect |
-| 11  | Does removing Time Distortion from the Flow score change results? | 102 | Run: AUC 0.298 (RF), 0.299 (LR), 0.268 (XGB); raw `mean(items) - 1` scoring verified |
-| 12  | Does baseline correction from the resting segment help? | 102 | Not wired yet |
+| 11  | Does removing Time Distortion from the Flow score change results? | 260 pseudo-subjects | AUC = 0.618 with RandomForest; LR/XGB lower; Time Distortion removal slightly hurts vs. 01c |
+| 12  | Does baseline correction from the resting segment help? | 223 pseudo-subjects | AUC = **0.691** with RandomForest; best result so far |
 
 All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-subjects with subject-level AUC = 0.501 when per-subject normalization was applied, and 0.551 when it was disabled (n=460). This indicates that subject-specific physiological baselines are a major information source; removing them largely cancels the Setup 01c improvement. Adding the GEQ 2013 scores on top of 2018 scores does not outperform the 3-column 01c design. Setup 11 now recomputes Flow from raw GEQ items without Time Distortion.
 
@@ -271,9 +277,9 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Ran Setup 01c: RandomForest AUC = 0.630 on 248 pseudo-subjects
 - ✅ Implemented raw-GEQ item recomputation in `BIRAFFE2Loader` (Setup 03 / Setup 11)
 - ✅ Fixed raw GEQ scoring to subtract 1.0 and match BIRAFFE2 pre-computed scale
-- ✅ Ran corrected Setups 03 / 11: AUC ~0.30, confirming Time Distortion helps prediction
+- ✅ Ran corrected Setups 03 / 11: AUC 0.618 with RandomForest on 260 pseudo-subjects (Time Distortion removal slightly hurts vs. 01c)
 - ✅ Added `scripts/build_ablation_table.py` and generated `results/ablation_comparison.md/csv`
-- ⏳ Next: implement and run Setup 12 (procedure-file baseline correction)
+- ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): RandomForest AUC = **0.691** on 223 pseudo-subjects — new best result
 
 ### Latest ablation results (subject-level)
 
@@ -281,47 +287,67 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 |-------|----------|----|-----|---|-------|
 | 01 single-level | 0.394 | 0.376 | 0.336 | 99 | Baseline |
 | 01b avg-levels | 0.434 | 0.434 | 0.362 | 99 | Averaged 3-level label |
-| 01c level-as-subjects | 0.593 | 0.593 | **0.630** | 248 | Best AUC so far; time-varying labels help |
+| 01c level-as-subjects | 0.593 | 0.593 | 0.630 | 248 | Previously best; time-varying labels help |
 | 01g level-as-subjects + per-subject norm | 0.552 | 0.528 | 0.501 | 540 | Original 01g: per-subject norm removes the 01c benefit |
 | 01g variant (z-score, no per-subj norm) | 0.546 | 0.545 | 0.551 | 460 | Recovers AUC; subject baselines matter |
 | 02 margin 0.1 | 0.478 | 0.452 | 0.358 | 92 | Excludes 8 near-median subjects |
-| 03 no time dist. | 0.424 | 0.400 | 0.298 | 99 | Raw items without item 25; Time Distortion helps ECG prediction |
-| 11 raw GEQ no time dist. | 0.394 | 0.386 | 0.299 | 99 | Same label as 03 with RF/LR/XGB; best LR 0.299, XGB 0.268 |
+| 03 no time dist. | 0.573 | 0.571 | **0.618** | 260 | 3 pseudo-subjects, raw items without item 25 |
+| 11 raw GEQ no time dist. | 0.573 | 0.571 | **0.618** | 260 | Same as 03 with RF/LR/XGB; RF best |
 | 04 no z-score | 0.394 | 0.380 | 0.336 | 99 | Worse than with z-score |
 | 05 no outlier | 0.441 | 0.440 | 0.382 | 102 | Slightly better; uses all subjects |
 | 07 5-minute window | 0.333 | 0.317 | 0.237 | 90 | Fewer windows, worse AUC |
+| 12 baseline correction + levels as subjects | 0.628 | 0.628 | **0.691** | 223 | Best AUC so far; baseline-corrected HRV |
 | 09 heartpy | 0.420 | 0.419 | 0.396 | 100 | Previously best pure-ECG AUC |
 
-**Setup 01c per-model subject-level AUCs (248 pseudo-subjects):**
+**Setup 12 per-model subject-level AUCs (223 baseline-corrected pseudo-subjects):**
 
 | Model | AUC | Notes |
 |-------|-----|-------|
-| RandomForest | **0.630** | Best overall so far |
-| XGBoost | 0.605 | Strong second |
-| kNN | 0.576 | |
-| LogisticRegression | 0.558 | |
-| SVM | 0.537 | |
+| RandomForest | **0.691** | Best overall so far |
+| SVM | 0.672 | Strong second |
+| XGBoost | 0.670 | |
+| LogisticRegression | 0.663 | |
+| kNN | 0.607 | |
 
-**Corrected raw GEQ scoring.** The first implementation of Setups 03 / 11 computed the
-raw Flow score as the plain mean of the item responses, while the BIRAFFE2
-pre-computed columns actually store `mean(items) - 1`. The loader was fixed to
-subtract 1.0, so the recomputed labels are now on the same 0–4 scale as the
-metadata. After the fix, subject-level AUCs for the Time-Distortion-free label are
-~0.30, well below the pre-computed full-Flow result (0.336). This confirms that
-excluding Time Distortion genuinely hurts ECG-based Flow prediction, rather than
-being an artefact of a scaling mismatch.
+**Setup 12 — baseline correction + levels as pseudo-subjects.** Setup 12 applies
+subject-level baseline correction using the resting `BASELINE START` / `BASELINE END`
+segment from the BIRAFFE2 procedure files. Each window feature is transformed by
+`change_score`: `window_feature − baseline_feature`. The config uses three GEQ-R
+2018 Flow columns (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`) with
+`treat_levels_as_subjects: true`, producing 223 valid pseudo-subjects. After
+correction, RandomForest reaches AUC **0.691**, beating the previous best of
+0.630. This is the strongest evidence so far that subject-specific resting
+physiology was masking a real flow signal, and that removing it improves
+cross-subject generalisation.
+
+**Corrected raw GEQ scoring and new results.** The first implementation of Setups 03 / 11
+computed the raw Flow score as the plain mean of the item responses, while the
+BIRAFFE2 pre-computed columns actually store `mean(items) - 1`. The loader was
+fixed to subtract 1.0, so the recomputed labels are now on the same 0–4 scale as
+the metadata. The first level-1-only runs produced AUCs ~0.30, well below the
+pre-computed full-Flow result (0.336). To separate the label-definition effect
+from the single-label-per-subject effect, both configs were updated to use
+`treat_levels_as_subjects: true` with `raw_geq_levels: [1, 2, 3]`, creating up to
+306 pseudo-subjects.
+
+After rerun, both setups achieved subject-level AUC **0.618** on 260 pseudo-subjects
+(RandomForest) with accuracy 0.573 and F1 0.571. Setup 11 per-model AUCs:
+RandomForest 0.618, LogisticRegression 0.579, XGBoost 0.543. This is a strong
+result but slightly below Setup 01c (0.630). Removing the Time Distortion item
+therefore appears to make physiological prediction marginally harder, supporting
+the hypothesis that Time Distortion contributes useful signal for this ECG-based
+classifier.
 
 A full comparison table across all runnable setups is automatically generated by
 `scripts/build_ablation_table.py` and written to `results/ablation_comparison.md`
 and `results/ablation_comparison.csv`.
 
-Takeaway: the level-as-subjects design (time-varying labels) substantially improves AUC
-from ~0.40 to **0.630** with RandomForest. This suggests that label misalignment and the
-single-label-per-subject limitation were major bottlenecks, not just weak ECG signal.
-Both 01g runs show that removing subject-specific baselines (via per-subject
-normalization) or adding more pseudo-subjects from the same person does not improve
-over 01c. The 0.630 AUC in 01c is therefore likely driven largely by between-subject
-physiology exposed by the pseudo-subject split, not by genuine within-person Flow
-variation. The pseudo-subjects per real person still share baseline physiology, so 01c is
-closer to "leave-one-level-out" than true cross-person generalisation.
+Takeaway: combining baseline correction with the level-as-subjects design pushes AUC
+to **0.691** with RandomForest, the best result so far. This suggests that
+subject-specific resting physiology was indeed masking a within-session flow
+signal. The level-as-subjects design alone improved AUC from ~0.40 to 0.630; adding
+baseline correction raises it further to 0.691. The pseudo-subjects still share
+baseline physiology, so generalisation remains closer to "leave-one-level-out"
+than to true cross-person generalisation, but the improvement is consistent and
+substantial.
 

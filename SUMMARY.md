@@ -111,12 +111,11 @@ flow_lol/
   - Window-level: Accuracy=0.532, F1=0.473, AUC=nan
   - Subject-level: Accuracy=0.546, F1=0.545, **AUC=0.551**, n=460 pseudo-subjects.
   - Confirms that removing per-subject normalization recovers much of the AUC, but adding 2013 columns does not beat the 3-column 01c result (AUC 0.630).
-- ✅ Implemented and ran corrected Setups 03 / 11 (recompute Flow from raw GEQ items excluding item 25):
-  - Fixed `_compute_raw_flow_score` to subtract 1.0, matching the BIRAFFE2 pre-computed `mean(items) - 1` scale.
-  - Setup 03 (RandomForest): subject-level Accuracy=0.424, F1=0.400, **AUC=0.298**, n=99.
-  - Setup 11 (LogisticRegression best): subject-level Accuracy=0.394, F1=0.386, **AUC=0.299**, n=99; RandomForest 0.298, XGBoost 0.268.
-  - Removing Time Distortion clearly hurts ECG-based Flow prediction; the low AUC is not a scaling bug.
 - ✅ Created `scripts/build_ablation_table.py` and regenerated `results/ablation_comparison.md` / `.csv` with all runnable setups.
+- ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]`, creating up to 306 pseudo-subjects with Time-Distortion-free labels.
+  - RandomForest subject-level AUC = **0.618**, accuracy = 0.573, F1 = 0.571, n = 260 pseudo-subjects.
+  - Setup 11 per-model AUCs: RandomForest 0.618, LogisticRegression 0.579, XGBoost 0.543.
+  - This is slightly below Setup 01c (0.630), suggesting removing item 25 (Time Distortion) makes prediction marginally harder.
 
 ## Unified To-Do List — Cover All Supervisor Comments + Missing Setups
 
@@ -126,8 +125,8 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 | # | Task | Supervisor comment | Status | What exactly needs to be done |
 |---|------|--------------------|--------|------------------------------|
-| 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Ran and verified: RF AUC 0.298, LR AUC 0.299, XGB 0.268, n=99. Raw scoring fixed to `mean(items) - 1` |
-| 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ❌ Not done | Extract baseline/resting timestamps from procedure files, compute baseline HRV, apply change-score or quotient correction, create config, run it |
+| 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Reran with `raw_geq_levels: [1,2,3]`: RF AUC=0.618, n=260; LR=0.579, XGB=0.543 |
+| 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ✅ Done | Ran with 3 levels as pseudo-subjects + 5 classifiers; RandomForest AUC=0.691, n=223 |
 | 3 | Setup 06 — multimodal ECG + EDA + webcam | 12 | 🔄 Config only | Implement EDA loader + cleaning/features, implement webcam/affect loader, combine all features in runner, run `setup_06_full_multimodal.yaml` |
 | 4 | Setup 08 — Irshad/PhySF loader with EEG | 9 | 🔄 Config only | Confirm dataset format/path, implement loader with ECG + EDA + EEG + baseline correction, run it |
 
@@ -155,7 +154,8 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 3. ✅ Updated README, GLOSSARY_AND_METHODOLOGY, and GEQ_ITEMS docs.
 4. ✅ Ran `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` and compared with single-level Setup 01.
 5. ✅ Ran Setup 02 / 04 / 05 / 07 / 09 configs that require no new loaders. Subject-level AUCs: 02=0.358, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Best pure-ECG result is heartpy (Setup 09).
-6. ✅ Implemented and ran corrected Setups 03 / 11: recompute Flow score from raw GEQ items excluding item 25, with fixed `mean(items) - 1` scoring. Setup 03 RF AUC=0.298; Setup 11 best LR AUC=0.299, RF=0.298, XGB=0.268 (n=99).
+6. ✅ Implemented and ran corrected Setups 03 / 11 (level-1-only): recompute Flow score from raw GEQ items excluding item 25, with fixed `mean(items) - 1` scoring. Setup 03 RF AUC=0.298; Setup 11 best LR AUC=0.299, RF=0.298, XGB=0.268 (n=99).
+7. ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]` (up to 306 pseudo-subjects). Final subject-level AUC=0.618 with RandomForest (n=260), LR=0.579, XGB=0.543.
 
 ### Short-term (complete the 10 setups)
 4. ❌ Implement BIRAFFE2 webcam loader (`flow_lol/data/loaders/biraffe2_face_loader.py`).
@@ -176,4 +176,11 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 ## How to proceed
 
-Next recommended step: **B.** Implement and run Setup 12 (BIRAFFE2 baseline correction from procedure-file resting segment). This is the next highest-priority supervisor comment (#5) and the most likely to reveal whether subject-specific physiology is masking a real flow signal.
+Setup 12 is complete and produced the best result so far (AUC = 0.691). The next
+recommended steps are now:
+
+1. **Setup 06 / multimodal:** add EDA + webcam features to see whether they push AUC higher.
+2. **Permutation analysis:** wire feature importance into LOSO CV (comment #10).
+3. **Biosppy path:** add the missing cross-package comparison (comment #7).
+4. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
+5. **Visualisations:** confusion matrices, feature-importance plots, learning curves.

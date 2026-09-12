@@ -1,0 +1,11 @@
+# YAML batch definition for running Setup 03 and Setup 11 sequentially.
+# Both setups now recompute the GEQ Flow score from raw item responses without
+# item 25, and treat the three game levels as three pseudo-subjects per real
+# subject.
+
+batch_name: "setup_03_11_raw_geq_pseudo_subjects"
+n_jobs: 10
+
+configs:
+  - "config/setup_03_without_time_distortion.yaml"
+  - "config/setup_11_raw_geq_without_time_distortion.yaml"

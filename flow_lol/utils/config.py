@@ -23,6 +23,11 @@ class DatasetConfig:
     raw_geq_dir: str = ""
     recompute_flow_from_items: bool = False
     exclude_time_distortion: bool = False
+    # When recompute_flow_from_items is true, this list selects which GEQ levels
+    # (1, 2, 3, ...) are used. In normal mode the levels are averaged into one
+    # label per subject. In treat_levels_as_subjects mode each level becomes a
+    # separate pseudo-subject.
+    raw_geq_levels: List[int] = field(default_factory=list)
 
 
 @dataclass

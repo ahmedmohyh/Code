@@ -1,6 +1,6 @@
-# Setup 11: recompute the GEQ Flow score from the raw item responses, excluding
-# item 25 ("I lost track of time"). Tests whether Time Distortion is hurting
-# prediction from ECG/HRV.
+# Setup 11: same label design as Setup 03 (recompute Flow from raw GEQ items
+# excluding item 25, with three pseudo-subjects per real subject), but run
+# multiple classifiers to confirm whether the result is model-specific.
 
 experiment_name: "setup_11_raw_geq_without_time_distortion"
 seed: 42
@@ -9,12 +9,17 @@ dataset:
   name: "BIRAFFE2"
   path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
   metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
   modalities:
     - "ECG"
+  # score_column is only used as a fallback to infer the GEQ level when
+  # raw_geq_levels is not set. The actual label is recomputed from the raw CSVs.
   score_column: "GEQ-1-FLOW-2018"
-  raw_geq_dir: "../dataset/data/BIRAFFE2/Version 2"   # NEW: directory with RAW-GEQ CSVs
-  recompute_flow_from_items: true                      # NEW
-  exclude_time_distortion: true                        # NEW: drop GEQ item 25
+  treat_levels_as_subjects: true
+  raw_geq_dir: "../dataset/data/BIRAFFE2/Version 2"
+  recompute_flow_from_items: true
+  exclude_time_distortion: true
+  raw_geq_levels: [1, 2, 3]
 
 label:
   method: "median_split"

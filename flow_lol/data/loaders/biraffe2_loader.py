@@ -108,6 +108,21 @@ class BIRAFFE2Loader:
             raise ValueError(f"Cannot infer GEQ level from score column: {col}")
         return int(m.group(1))
 
+    def _raw_geq_level(self, level_index: int) -> int:
+        """Return the raw GEQ level number (1, 2, 3, ...) for a pseudo-subject level index.
+
+        If ``raw_geq_levels`` is configured, it is used directly. Otherwise the
+        level is inferred from the corresponding ``score_column`` entry, with a
+        final fallback to level_index + 1.
+        """
+        levels = getattr(self.config, "raw_geq_levels", None)
+        if levels:
+            return int(levels[level_index])
+        cols = self._score_columns()
+        if level_index < len(cols):
+            return self._level_from_score_column(cols[level_index])
+        return level_index + 1
+
     def _compute_raw_flow_score(self, real_id: int, level: int) -> float:
         """Recompute the Flow score from raw item responses for one level.
 
@@ -210,11 +225,16 @@ class BIRAFFE2Loader:
     def _level_count(self) -> int:
         """Return number of pseudo-subject levels.
 
-        In level-as-subjects mode this equals the number of score columns,
-        allowing any number of levels (e.g. 3 or 6). Otherwise it is 1.
+        In level-as-subjects mode this equals the number of explicitly configured
+        raw GEQ levels (when recomputing from items) or the number of score
+        columns otherwise. This allows any number of levels (e.g. 3 or 6).
         """
         if not getattr(self.config, "treat_levels_as_subjects", False):
             return 1
+        if self._recompute_flow:
+            levels = getattr(self.config, "raw_geq_levels", None)
+            if levels:
+                return len(levels)
         return len(self._score_columns())
 
     def _pseudo_to_real(self, pseudo_id: int) -> Tuple[int, int]:
@@ -233,8 +253,8 @@ class BIRAFFE2Loader:
     def _get_label(self, row: pd.DataFrame, level: Optional[int] = None) -> float:
         """Read label for a subject/level.
 
-        In level-as-subjects mode, ``level`` indexes into ``score_column``.
-        Otherwise a list of columns is averaged.
+        In level-as-subjects mode, ``level`` is a pseudo-subject index. Otherwise
+        the configured levels/columns are averaged into one label per subject.
 
         If ``recompute_flow_from_items`` is enabled, the score is computed from
         the raw GEQ item responses instead of the pre-aggregated metadata column.
@@ -246,17 +266,17 @@ class BIRAFFE2Loader:
             if getattr(self.config, "treat_levels_as_subjects", False):
                 if level is None:
                     raise ValueError("level required in treat_levels_as_subjects mode")
-                target_level = level + 1
-            elif len(cols) == 1:
-                target_level = self._level_from_score_column(cols[0])
-            else:
-                # Average raw recomputed scores across the configured columns.
-                scores = [
-                    self._compute_raw_flow_score(real_id, self._level_from_score_column(c))
-                    for c in cols
-                ]
+                target_level = self._raw_geq_level(level)
+                return self._compute_raw_flow_score(real_id, target_level)
+
+            target_levels = getattr(self.config, "raw_geq_levels", None)
+            if target_levels:
+                scores = [self._compute_raw_flow_score(real_id, lvl) for lvl in target_levels]
                 return float(np.nanmean(scores))
-            return self._compute_raw_flow_score(real_id, target_level)
+            if len(cols) == 1:
+                return self._compute_raw_flow_score(real_id, self._level_from_score_column(cols[0]))
+            scores = [self._compute_raw_flow_score(real_id, self._level_from_score_column(c)) for c in cols]
+            return float(np.nanmean(scores))
 
         if getattr(self.config, "treat_levels_as_subjects", False):
             if level is None:
@@ -297,18 +317,30 @@ class BIRAFFE2Loader:
             if level_mode:
                 for level in range(n_levels):
                     if self._recompute_flow:
+                        target_level = self._raw_geq_level(level)
                         try:
-                            score = self._compute_raw_flow_score(sid, level + 1)
+                            score = self._compute_raw_flow_score(sid, target_level)
                         except (ValueError, KeyError):
                             continue
-                        if not pd.isna(score):
-                            valid_ids.append(self._real_to_pseudo(sid, level))
+                        if pd.isna(score):
+                            continue
                     else:
-                        if not pd.isna(row[cols[level]].values[0]):
-                            valid_ids.append(self._real_to_pseudo(sid, level))
+                        if level >= len(cols) or pd.isna(row[cols[level]].values[0]):
+                            continue
+                    valid_ids.append(self._real_to_pseudo(sid, level))
             else:
                 if self._recompute_flow:
-                    if len(cols) == 1:
+                    target_levels = getattr(self.config, "raw_geq_levels", None)
+                    if target_levels:
+                        scores = []
+                        for lvl in target_levels:
+                            try:
+                                scores.append(self._compute_raw_flow_score(sid, lvl))
+                            except (ValueError, KeyError):
+                                scores.append(np.nan)
+                        if pd.isna(scores).all():
+                            continue
+                    elif len(cols) == 1:
                         try:
                             score = self._compute_raw_flow_score(sid, self._level_from_score_column(cols[0]))
                         except (ValueError, KeyError):
@@ -316,7 +348,6 @@ class BIRAFFE2Loader:
                         if pd.isna(score):
                             continue
                     else:
-                        # Require at least one non-NaN raw score among the columns.
                         scores = []
                         for c in cols:
                             try:
