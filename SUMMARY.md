@@ -127,7 +127,7 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 |---|------|--------------------|--------|------------------------------|
 | 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Reran with `raw_geq_levels: [1,2,3]`: RF AUC=0.618, n=260; LR=0.579, XGB=0.543 |
 | 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ✅ Done | Ran with 3 levels as pseudo-subjects + 5 classifiers; RandomForest AUC=0.691, n=223 |
-| 3 | Setup 06 — multimodal ECG + EDA + webcam | 12 | 🔄 Config only | Implement EDA loader + cleaning/features, implement webcam/affect loader, combine all features in runner, run `setup_06_full_multimodal.yaml` |
+| 3 | Setup 06 — multimodal ECG + EDA + webcam | 12 | ✅ Done | Ran with ECG+EDA+FACE, 3 levels as pseudo-subjects; RF AUC=0.633, n=107 |
 | 4 | Setup 08 — Irshad/PhySF loader with EEG | 9 | 🔄 Config only | Confirm dataset format/path, implement loader with ECG + EDA + EEG + baseline correction, run it |
 
 ### Medium priority — methodological completeness
@@ -176,11 +176,12 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 ## How to proceed
 
-Setup 12 is complete and produced the best result so far (AUC = 0.691). The next
+Setup 12 produced the best result so far (AUC = 0.691). Setup 06 ran successfully
+(ECG+EDA+FACE) but only reached AUC = 0.633 on 107 pseudo-subjects. The next
 recommended steps are now:
 
-1. **Setup 06 / multimodal:** add EDA + webcam features to see whether they push AUC higher.
-2. **Permutation analysis:** wire feature importance into LOSO CV (comment #10).
-3. **Biosppy path:** add the missing cross-package comparison (comment #7).
-4. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
-5. **Visualisations:** confusion matrices, feature-importance plots, learning curves.
+1. **Permutation analysis:** wire feature importance into LOSO CV (comment #10).
+2. **Biosppy path:** add the missing cross-package comparison (comment #7).
+3. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
+4. **Visualisations:** confusion matrices, feature-importance plots, learning curves.
+5. **Investigate Setup 06 coverage:** understand why only 107/306 pseudo-subjects produced valid features.

@@ -13,7 +13,7 @@ def extract_webcam_features(face_df: pd.DataFrame, window_start_s: float, window
     if sub.empty:
         return {}
 
-    emotion_cols = [c for c in sub.columns if c in ["NEUTRAL", "HAPPY", "ANGRY", "SAD", "SURPRISE", "FEAR", "DISGUST"]]
+    emotion_cols = [c for c in sub.columns if c in ["NEUTRAL", "HAPPINESS", "ANGER", "CONTEMPT", "DISGUST", "FEAR", "SADNESS", "SURPRISE"]]
     feats = {}
     for col in emotion_cols:
         feats[f"{col}_mean"] = float(sub[col].mean())

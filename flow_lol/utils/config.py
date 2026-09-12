@@ -28,6 +28,10 @@ class DatasetConfig:
     # label per subject. In treat_levels_as_subjects mode each level becomes a
     # separate pseudo-subject.
     raw_geq_levels: List[int] = field(default_factory=list)
+    # Optional path to the BIRAFFE2 Face CSV archive (e.g. BIRAFFE2-photo.zip).
+    # If provided and "FACE" or "WEBCAM" is in modalities, the loader reads
+    # per-subject affect CSVs and the runner extracts window-level affect features.
+    face_zip_path: str = ""
 
 
 @dataclass

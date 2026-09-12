@@ -12,9 +12,9 @@ One participant / player in the dataset. In BIRAFFE2 there are 102 subjects.
 ### Biosignal
 A continuously recorded physiological signal. In this project we use:
 - **ECG** (electrocardiography) — heart electrical activity, sampled at 1 kHz in BIRAFFE2.
-- **EDA** (electrodermal activity) — skin conductance, also at 1 kHz.
+- **EDA** (electrodermal activity) — skin conductance, also at 1 kHz. Cleaned with `neurokit2` into tonic (SCL) and phasic (SCR) components.
 - **EEG** (electroencephalography) — brain electrical activity, when available.
-- **Webcam / face video** — used for emotion recognition features, when available.
+- **Webcam / face video** — pre-computed emotion probabilities per frame from BIRAFFE2 Face CSVs (`ANGER`, `CONTEMPT`, `DISGUST`, `FEAR`, `HAPPINESS`, `NEUTRAL`, `SADNESS`, `SURPRISE`), aggregated per window as mean/std/max.
 
 ### Window
 A short, fixed-length segment of a biosignal that is treated as one analysis sample. Example: a 60-second ECG window with a 30-second step gives many windows per subject.

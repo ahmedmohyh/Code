@@ -12,11 +12,15 @@ from flow_lol.utils.config import DatasetConfig
 
 
 class BIRAFFE2Loader:
-    """Load BIRAFFE2 ECG/EDA signals and metadata.
+    """Load BIRAFFE2 ECG/EDA signals, webcam affect data, and metadata.
 
     The biosignal files are stored inside a zip archive (e.g. BIRAFFE2-biosigs.zip).
     Each subject has one CSV: ``BIRAFFE2-biosigs/SUB<id>-BioSigs.csv`` with columns
     TIMESTAMP, ECG, EDA at 1 kHz.
+
+    Optional webcam/affect CSVs live in a second archive (e.g. BIRAFFE2-photo.zip)
+    under ``BIRAFFE2-photo/SUB<id>-Face.csv`` with columns such as
+    GAME-TIMESTAMP, FRAME-NUMBER, NEUTRAL, HAPPINESS, ANGER, etc.
 
     Labels are read from the main metadata CSV (semicolon-separated), which contains
     pre-computed GEQ Flow subscale scores such as ``GEQ-1-FLOW-2018``.
@@ -36,8 +40,10 @@ class BIRAFFE2Loader:
         self.config = config
         self.zip_path = Path(config.path)
         self.metadata_path = Path(config.metadata_path)
+        self.face_zip_path = Path(getattr(self.config, "face_zip_path", "") or "")
         self.sample_rate = 1000.0
         self.available_files: Dict[int, str] = {}
+        self.available_face_files: Dict[int, str] = {}
         self.metadata: Optional[pd.DataFrame] = None
         self.cache_dir = Path(cache_dir) if cache_dir else None
         # Maps real subject ID -> (game_start, game_end) when procedure files are available.
@@ -58,6 +64,9 @@ class BIRAFFE2Loader:
         proc_path = Path(getattr(self.config, "procedure_path", "") or "")
         if proc_path.exists():
             self._load_procedure_times()
+        # Scan optional webcam/affect archive if a path is configured.
+        if str(self.face_zip_path) not in (".", "") and self.face_zip_path.suffix.lower() == ".zip" and self.face_zip_path.exists():
+            self._scan_face_archive()
 
     # ------------------------------------------------------------------
     # Archive / metadata scanning
@@ -70,6 +79,17 @@ class BIRAFFE2Loader:
                 m = re.search(r"SUB(\d+)-BioSigs\.csv", name)
                 if m:
                     self.available_files[int(m.group(1))] = name
+
+    def _scan_face_archive(self) -> None:
+        """Scan the BIRAFFE2 Face CSV archive (e.g. BIRAFFE2-photo.zip)."""
+        try:
+            with zipfile.ZipFile(self.face_zip_path, "r") as zf:
+                for name in zf.namelist():
+                    m = re.search(r"SUB(\d+)-Face\.csv", name, re.IGNORECASE)
+                    if m:
+                        self.available_face_files[int(m.group(1))] = name
+        except Exception as e:
+            print(f"[warn] Could not scan face archive {self.face_zip_path}: {e}")
 
     def _load_metadata(self) -> None:
         if not self.metadata_path.exists():
@@ -390,14 +410,43 @@ class BIRAFFE2Loader:
     # ------------------------------------------------------------------
     # Signal loading
     # ------------------------------------------------------------------
+    def _load_face_signal(self, real_id: int) -> Optional[pd.DataFrame]:
+        """Load the face/affect CSV for a real subject if available.
+
+        Returns None if no face archive is configured or no file exists.
+        """
+        if not self.face_zip_path.exists() or real_id not in self.available_face_files:
+            return None
+        try:
+            with zipfile.ZipFile(self.face_zip_path, "r") as zf:
+                with zf.open(self.available_face_files[real_id]) as f:
+                    df = pd.read_csv(f, sep=";")
+            # Convert GAME-TIMESTAMP to numeric if present.
+            if "GAME-TIMESTAMP" in df.columns:
+                df["GAME-TIMESTAMP"] = pd.to_numeric(df["GAME-TIMESTAMP"], errors="coerce")
+            # Convert FRAME-NUMBER to numeric and use it as a fallback timestamp.
+            if "FRAME-NUMBER" in df.columns:
+                df["FRAME-NUMBER"] = pd.to_numeric(df["FRAME-NUMBER"], errors="coerce")
+                no_game_ts = "GAME-TIMESTAMP" not in df.columns or df["GAME-TIMESTAMP"].isna().all()
+                if no_game_ts:
+                    df["GAME-TIMESTAMP"] = df["FRAME-NUMBER"] / 1000.0
+            # Keep only rows with a valid timestamp.
+            if "GAME-TIMESTAMP" in df.columns:
+                df = df.dropna(subset=["GAME-TIMESTAMP"]).reset_index(drop=True)
+            return df
+        except Exception as e:
+            print(f"[warn {real_id}] failed to load face CSV: {e}")
+            return None
+
     def load_subject(self, subject_id: int) -> Dict:
-        """Load one subject's (or pseudo-subject's) biosignals and label.
+        """Load one subject's (or pseudo-subject's) biosignals, optional face data, and label.
 
         Returns
         -------
         dict with keys:
             subject_id: int
             signal: pd.DataFrame with columns TIMESTAMP, ECG, (EDA)
+            face: Optional[pd.DataFrame] -- webcam affect data
             label: float  -- GEQ Flow score for the configured level
             sampling_rate: float
         """
@@ -420,12 +469,18 @@ class BIRAFFE2Loader:
         cols = ["TIMESTAMP"] + [m for m in self.config.modalities if m in signal.columns]
         signal = signal[cols]
 
+        # Load optional face/affect data if archive is configured.
+        face_df = None
+        if self.face_zip_path.exists() and "FACE" in [m.upper() for m in self.config.modalities]:
+            face_df = self._load_face_signal(real_id)
+
         row = self.metadata[self.metadata["ID"] == real_id]
         label = self._get_label(row, level=level)
 
         return {
             "subject_id": subject_id,
             "signal": signal,
+            "face": face_df,
             "label": label,
             "sampling_rate": self.sample_rate,
         }
