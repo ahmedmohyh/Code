@@ -280,6 +280,7 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Ran corrected Setups 03 / 11: AUC 0.618 with RandomForest on 260 pseudo-subjects (Time Distortion removal slightly hurts vs. 01c)
 - ✅ Added `scripts/build_ablation_table.py` and generated `results/ablation_comparison.md/csv`
 - ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): RandomForest AUC = **0.691** on 223 pseudo-subjects — new best result
+- ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC = **0.633** on 107 pseudo-subjects — comparable to 01c but fewer valid subjects
 
 ### Latest ablation results (subject-level)
 
@@ -297,6 +298,7 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 | 05 no outlier | 0.441 | 0.440 | 0.382 | 102 | Slightly better; uses all subjects |
 | 07 5-minute window | 0.333 | 0.317 | 0.237 | 90 | Fewer windows, worse AUC |
 | 12 baseline correction + levels as subjects | 0.628 | 0.628 | **0.691** | 223 | Best AUC so far; baseline-corrected HRV |
+| 06 multimodal ECG+EDA+FACE | 0.617 | 0.612 | 0.633 | 107 | ECG + EDA + webcam affect; fewer valid pseudo-subjects |
 | 09 heartpy | 0.420 | 0.419 | 0.396 | 100 | Previously best pure-ECG AUC |
 
 **Setup 12 per-model subject-level AUCs (223 baseline-corrected pseudo-subjects):**
@@ -346,8 +348,14 @@ Takeaway: combining baseline correction with the level-as-subjects design pushes
 to **0.691** with RandomForest, the best result so far. This suggests that
 subject-specific resting physiology was indeed masking a within-session flow
 signal. The level-as-subjects design alone improved AUC from ~0.40 to 0.630; adding
-baseline correction raises it further to 0.691. The pseudo-subjects still share
-baseline physiology, so generalisation remains closer to "leave-one-level-out"
-than to true cross-person generalisation, but the improvement is consistent and
-substantial.
+baseline correction raises it further to 0.691.
+
+Adding EDA and webcam affect features (Setup 06) produced AUC **0.633** on only
+107 pseudo-subjects — comparable to Setup 01c (0.630, n=248) but with far fewer
+valid samples. The lower subject count suggests that face-data coverage is
+sparse or misaligned for many level segments, and the multimodal gain over ECG
+alone is modest in this configuration.
+
+The pseudo-subjects still share baseline physiology, so generalisation remains
+closer to "leave-one-level-out" than to true cross-person generalisation.
 

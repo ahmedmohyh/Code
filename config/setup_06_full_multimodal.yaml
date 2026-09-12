@@ -1,5 +1,6 @@
-# Base configuration for the Flow-LoL pipeline.
-# Copy and modify this file for each ablation setup.
+# Setup 06: multimodal ECG + EDA + webcam affect features.
+# Labels are one per subject from level 1 by default. Set score_column to a
+# list and treat_levels_as_subjects: true to use pseudo-subjects.
 
 experiment_name: "setup_06_full_multimodal"
 seed: 42
@@ -8,10 +9,17 @@ dataset:
   name: "BIRAFFE2"
   path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
   metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
+  face_zip_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-photo.zip"
   modalities:
     - "ECG"
     - "EDA"
-  score_column: "GEQ-1-FLOW-2018"
+    - "FACE"
+  score_column:
+    - "GEQ-1-FLOW-2018"
+    - "GEQ-2-FLOW-2018"
+    - "GEQ-3-FLOW-2018"
+  treat_levels_as_subjects: true
 
 label:
   method: "median_split"

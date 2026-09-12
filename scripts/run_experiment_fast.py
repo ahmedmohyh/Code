@@ -20,10 +20,13 @@ from flow_lol.utils.config import Config, load_config
 from flow_lol.data.loaders.biraffe2_loader import BIRAFFE2Loader
 from flow_lol.data.labelers.flow_labeler import FlowLabeler
 from flow_lol.preprocessing.cleaners.ecg_cleaner import clean_ecg
+from flow_lol.preprocessing.cleaners.eda_cleaner import clean_eda
 from flow_lol.preprocessing.baseline_corrector import BaselineCorrector
 from flow_lol.preprocessing.per_subject_normaliser import PerSubjectNormaliser
 from flow_lol.segmentation.window_segmenter import WindowSegmenter
 from flow_lol.features.extractors.ecg_features import extract_ecg_features
+from flow_lol.features.extractors.eda_features import extract_eda_features
+from flow_lol.features.extractors.webcam_features import extract_webcam_features
 from flow_lol.features.feature_union import features_to_matrix, impute_missing
 from flow_lol.models.classical import build_classifier, list_available_classifiers
 from flow_lol.models.deep import build_deep_classifier
@@ -37,10 +40,19 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*DFA_alpha2.*")
 
 
-def _extract_signal_features(signal_df, loader, segmenter, config):
-    """Clean, segment and extract ECG features from one signal DataFrame."""
+def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None):
+    """Clean, segment and extract ECG, EDA and webcam features from one signal DataFrame.
+
+    The function is fully backward-compatible: if only ECG is requested, it
+    returns the same matrix as before. EDA and FACE features are only added
+    when those modalities are present in the config.
+    """
     if "ECG" not in signal_df.columns or signal_df.empty:
-        return None
+        return None, []
+
+    modalities = [m.upper() for m in getattr(config.dataset, "modalities", ["ECG"])]
+
+    # --- ECG windows (used as the master time grid) ---
     ecg_raw = signal_df["ECG"].to_numpy(dtype=float)
     ecg_clean = clean_ecg(
         ecg_raw,
@@ -48,7 +60,10 @@ def _extract_signal_features(signal_df, loader, segmenter, config):
         package=config.preprocessing.cleaning_package,
     )
     windows = segmenter.segment(ecg_clean)
-    feats = []
+    if not windows:
+        return None, []
+
+    ecg_feats = []
     for w in windows:
         try:
             f = extract_ecg_features(
@@ -59,14 +74,66 @@ def _extract_signal_features(signal_df, loader, segmenter, config):
                 selected_frequency=config.features.ecg.frequency,
                 selected_nonlinear=config.features.ecg.nonlinear,
             )
-            feats.append(f)
+            ecg_feats.append(f)
         except Exception:
-            continue
-    if not feats:
-        return None
-    X, _ = features_to_matrix(feats)
+            ecg_feats.append({})
+
+    # --- EDA features (same time grid) ---
+    eda_feats = []
+    if "EDA" in modalities and "EDA" in signal_df.columns:
+        eda_raw = signal_df["EDA"].to_numpy(dtype=float)
+        try:
+            eda_cleaned = clean_eda(eda_raw, sampling_rate=loader.sample_rate, package="neurokit2")
+            tonic = eda_cleaned["tonic"]
+            phasic = eda_cleaned["phasic"]
+            for w in windows:
+                start = w["start_sample"]
+                end = w["end_sample"]
+                try:
+                    f = extract_eda_features(tonic[start:end], phasic[start:end], sampling_rate=loader.sample_rate)
+                    eda_feats.append(f)
+                except Exception:
+                    eda_feats.append({})
+        except Exception as e:
+            print(f"  [warn] EDA cleaning failed: {e}")
+
+    # --- Webcam / face features (aligned by absolute GAME-TIMESTAMP) ---
+    face_feats = []
+    if "FACE" in modalities and face_df is not None and not face_df.empty:
+        ts_col = "GAME-TIMESTAMP"
+        if ts_col in face_df.columns:
+            timestamps = signal_df["TIMESTAMP"].to_numpy(dtype=float)
+            for w in windows:
+                try:
+                    # Map window sample indices to absolute biosignal timestamps.
+                    window_start_ts = timestamps[w["start_sample"]]
+                    window_end_ts = timestamps[w["end_sample"] - 1]
+                    f = extract_webcam_features(
+                        face_df,
+                        window_start_s=window_start_ts,
+                        window_end_s=window_end_ts,
+                        timestamp_col=ts_col,
+                    )
+                    face_feats.append(f)
+                except Exception:
+                    face_feats.append({})
+
+    # Merge per-window dicts
+    merged = []
+    for i in range(len(windows)):
+        m = {}
+        m.update(ecg_feats[i])
+        if eda_feats:
+            m.update(eda_feats[i])
+        if face_feats:
+            m.update(face_feats[i])
+        merged.append(m)
+
+    if not merged or all(not m for m in merged):
+        return None, []
+    X, feature_names = features_to_matrix(merged)
     X = impute_missing(X, strategy="median")
-    return X
+    return X, feature_names
 
 
 def _process_one_subject(args_tuple):
@@ -74,7 +141,8 @@ def _process_one_subject(args_tuple):
     sid, loader, segmenter, config, label = args_tuple
     try:
         record = loader.load_subject(sid)
-        X = _extract_signal_features(record["signal"], loader, segmenter, config)
+        face_df = record.get("face")
+        X, names = _extract_signal_features(record["signal"], loader, segmenter, config, face_df=face_df)
         if X is None:
             return sid, None, None, label, 0
 
@@ -84,15 +152,20 @@ def _process_one_subject(args_tuple):
                 sid,
                 max_length_s=float(config.preprocessing.baseline_length_s),
             )
-            baseline_X = _extract_signal_features(baseline_signal, loader, segmenter, config)
+            baseline_X, _ = _extract_signal_features(
+                baseline_signal, loader, segmenter, config, face_df=face_df
+            )
             if baseline_X is not None and baseline_X.shape[0] > 0:
-                corrector = BaselineCorrector(method=baseline_correction)
-                X = corrector.fit_transform(baseline_X, X)
+                if baseline_X.shape[1] != X.shape[1]:
+                    print(f"  [warn {sid}] baseline/game feature count mismatch ({baseline_X.shape[1]} vs {X.shape[1]}); leaving uncorrected")
+                else:
+                    corrector = BaselineCorrector(method=baseline_correction)
+                    X = corrector.fit_transform(baseline_X, X)
             else:
                 print(f"  [warn {sid}] no baseline features; leaving game features uncorrected")
 
         y = np.full(len(X), fill_value=label, dtype=int)
-        return sid, X, y, label, len(X)
+        return sid, X, y, label, names
     except Exception as e:
         return sid, None, None, label, f"ERROR: {e}"
 
@@ -166,6 +239,7 @@ def load_biraffe2_data_fast(config: Config, n_jobs: int = -1, cache_dir: str = "
 
     X_by_subject = {}
     y_by_subject = {}
+    feature_names = []
     skipped = 0
     for sid, X, y, label, info in results:
         if X is None:
@@ -174,11 +248,16 @@ def load_biraffe2_data_fast(config: Config, n_jobs: int = -1, cache_dir: str = "
             continue
         X_by_subject[sid] = X
         y_by_subject[sid] = y
+        if not feature_names and isinstance(info, list):
+            feature_names = info
 
-    # Recover feature names from config
-    feature_names = list(config.features.ecg.time + config.features.ecg.frequency + config.features.ecg.nonlinear)
+    # Recover feature names from config if the runner did not return them.
+    if not feature_names:
+        feature_names = list(config.features.ecg.time + config.features.ecg.frequency + config.features.ecg.nonlinear)
 
     print(f"Subjects used: {len(X_by_subject)}, skipped: {skipped}")
+    if feature_names:
+        print(f"Feature count: {len(feature_names)}")
 
     if X_by_subject:
         total_windows = sum(X.shape[0] for X in X_by_subject.values())

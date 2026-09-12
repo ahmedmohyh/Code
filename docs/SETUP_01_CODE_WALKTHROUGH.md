@@ -372,6 +372,8 @@ The loader functions `_load_procedure_times()`, `_find_event_time()`, and
 | Per-subject processing | `scripts/run_experiment_fast.py` | `_process_one_subject()` | Clean, segment, extract, impute |
 | Clean ECG | `flow_lol/preprocessing/cleaners/ecg_cleaner.py` | `clean_ecg()` | Calls `neurokit2.ecg_clean()` |
 | Extract HRV features | `flow_lol/features/extractors/ecg_features.py` | `extract_ecg_features()` | R-peaks → R-R → HRV features |
+| Extract EDA features | `flow_lol/features/extractors/eda_features.py` | `extract_eda_features()` | SCL + SCR features |
+| Extract face features | `flow_lol/features/extractors/webcam_features.py` | `extract_webcam_features()` | Emotion probability mean/std/max per window |
 | Build feature matrix | `flow_lol/features/feature_union.py` | `features_to_matrix()` | Dicts → numpy matrix |
 | Impute NaN | `flow_lol/features/feature_union.py` | `impute_missing()` | Median imputation, all-NaN → 0 |
 | LOSO CV | `flow_lol/validation/loso_cv.py` | `run_loso_cv()` | One fold per subject |

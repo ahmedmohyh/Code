@@ -56,6 +56,7 @@ All setups below have been executed end-to-end on BIRAFFE2.
 | 07 5-min window | 300 s fixed window | 0.237 | 90 |
 | 09 heartpy | heartpy ECG cleaning/features | 0.396 | 100 |
 | 12 baseline correction + levels as subjects | Baseline-corrected HRV, 3 pseudo-subjects | **0.691** | 223 |
+| 06 multimodal ECG+EDA+FACE | ECG + EDA + webcam affect, 3 pseudo-subjects | 0.633 | 107 |
 | 01c level-as-subjects | 3 pseudo-subjects per real subject | 0.630 | 248 |
 | 01g level-as-subjects + per-subject norm | 6 pseudo-subjects per real subject | 0.501 | 540 |
 | 01g variant (no per-subject norm, z-score) | 6 pseudo-subjects per real subject | 0.551 | 460 |
@@ -94,19 +95,21 @@ makes physiological prediction marginally harder.
 ### 3.1 Multimodal track (Setup 06)
 
 **What exists:** A config `setup_06_full_multimodal.yaml` that requests ECG + EDA
-+ webcam.
++ webcam. The runner now extracts all three modalities and combines them per
+window.
 
-**What should happen:** Implement EDA cleaning + feature extraction, and load
-BIRAFFE2 webcam-derived affect features. Combine ECG, EDA and webcam features in
-one matrix.
+**What was done:** EDA cleaning (`neurokit2` tonic/phasic decomposition), EDA
+feature extraction (SCL/SCR), and BIRAFFE2 Face CSV loading were wired into the
+fast runner.
 
-**Why it matters:** Pure ECG is weak. EDA and facial expressions are expected to
-add complementary flow information. This is the most promising near-term
-improvement.
+**Result:** RandomForest achieved subject-level AUC **0.633** on 107
+pseudo-subjects. This is comparable to Setup 01c (0.630, n=248) but with far
+fewer valid subjects, suggesting that face-data coverage or alignment is sparse
+for many level segments.
 
-**Blockers:**
-- EDA feature extractor not fully integrated into runner.
-- Webcam loader not implemented (`flow_lol/data/loaders/biraffe2_face_loader.py`).
+**Open questions:**
+- Why only 107 of 306 possible pseudo-subjects produced valid features.
+- Whether EDA alone (without face) or face-only would be more informative.
 
 ### 3.2 Irshad/PhySF track (Setup 08)
 
@@ -293,8 +296,8 @@ live prototype (which will use raw webcam), but its performance is weak.
 | 0 | ✅ Redesign Setups 03 and 11 — raw GEQ Flow without Time Distortion, `raw_geq_levels` as pseudo-subjects | Satisfies comment #3; AUC=0.618, slightly below 01c | Low |
 | 1 | ✅ Run the redesigned 03/11 batch and update the ablation table | Done; both setups n=260, AUC=0.618 | Low |
 | 2 | ✅ Implement Setup 12 — BIRAFFE2 baseline correction from procedure files | Satisfies comment #5; AUC=0.691, new best | Medium |
-| 3 | Implement EDA loader + features for Setup 06 | High — first real multimodal test | Medium |
-| 4 | Implement webcam loader for Setup 06 | High — adds behavioural signal | Medium |
+| 3 | ✅ Implement EDA loader + features for Setup 06 | High — first real multimodal test; AUC=0.633, n=107 | Medium |
+| 4 | ✅ Implement webcam loader for Setup 06 | High — adds behavioural signal; ran with ECG+EDA+FACE | Medium |
 | 5 | Implement Setup 08 — Irshad/PhySF loader with EEG | Satisfies comment #9; only EEG dataset | Medium |
 | 6 | Wire permutation analysis | Satisfies comment #10; feature importance | Low |
 | 7 | Add biosppy ECG path | Satisfies comment #7; cross-package comparison | Low |
@@ -305,9 +308,16 @@ live prototype (which will use raw webcam), but its performance is weak.
 
 ## 6. Immediate next step
 
-Setups 03 and 11 have been run. Setup 12 (BIRAFFE2 baseline correction from
-procedure-file resting segment) is the next open supervisor comment (#5). It is
-on hold until explicitly requested.
+Setup 12 is the current best result (AUC 0.691). Setup 06 ran but underperformed
+relative to expectations (AUC 0.633, n=107). The next open supervisor comments
+are:
+
+- **Comment #10:** wire permutation analysis into LOSO CV.
+- **Comment #7:** add biosppy ECG cleaning/features path.
+- **Comment #0/10:** wire deep-learning models (Setup 10).
+- **Comment #9:** implement Irshad/PhySF loader with EEG (Setup 08).
+
+Pick whichever is most useful for the thesis write-up.
 
 ---
 
