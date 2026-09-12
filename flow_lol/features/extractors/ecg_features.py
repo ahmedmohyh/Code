@@ -61,14 +61,33 @@ def _extract_neurokit2(signal, sampling_rate, selected_time, selected_frequency,
             pass
 
     # Nonlinear features
-    if rri_ms.size > 3:
+    # Use the specific functions we need rather than the full hrv_nonlinear
+    # wrapper, which computes many unused indices (including multiscale entropy)
+    # and can be very slow for long or borderline windows.
+    if rri_ms.size >= 30:
         try:
-            hrv_non = nk.hrv_nonlinear(info, sampling_rate=sampling_rate, show=False)
-            feats["sample_entropy"] = float(_series_value(hrv_non, "HRV_SampEn"))
-            feats["DFA_alpha1"] = float(_series_value(hrv_non, "HRV_DFA_alpha1"))
-            feats["DFA_alpha2"] = float(_series_value(hrv_non, "HRV_DFA_alpha2"))
+            sampen, _ = nk.entropy_sample(rri_ms)
+            feats["sample_entropy"] = float(sampen)
         except Exception:
             pass
+        try:
+            # Short-term scaling exponent (window sizes 4-16)
+            dfa_alpha1, _ = nk.fractal_dfa(
+                rri_ms, windows=list(range(4, min(17, rri_ms.size // 2)))
+            )
+            feats["DFA_alpha1"] = float(dfa_alpha1)
+        except Exception:
+            pass
+        if rri_ms.size >= 50:
+            try:
+                # Long-term scaling exponent (window sizes 16 up to 64, capped)
+                max_win = min(65, rri_ms.size // 2)
+                windows2 = list(range(16, max_win))
+                if len(windows2) >= 4:
+                    dfa_alpha2, _ = nk.fractal_dfa(rri_ms, windows=windows2)
+                    feats["DFA_alpha2"] = float(dfa_alpha2)
+            except Exception:
+                pass
 
     return _filter_features(feats, selected_time, selected_frequency, selected_nonlinear)
 

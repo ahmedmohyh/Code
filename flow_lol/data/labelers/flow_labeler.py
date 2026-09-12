@@ -2,6 +2,7 @@
 from typing import List, Tuple
 
 import numpy as np
+import pandas as pd
 
 from flow_lol.utils.config import LabelConfig
 
@@ -67,18 +68,37 @@ class FlowLabeler:
         }
 
 
-def compute_flow_score(raw_items: np.ndarray, items: str = "full_subscale") -> np.ndarray:
-    """Placeholder for item-level Flow score computation.
+def compute_flow_score(raw_items, items: str = "full_subscale"):
+    """Compute a Flow score from raw GEQ item responses.
 
-    BIRAFFE2 metadata already provides aggregated Flow scores, so this
-    function currently returns the input unchanged. For datasets with raw
-    item responses, implement item selection here (e.g. exclude Time Distortion).
+    Parameters
+    ----------
+    raw_items:
+        Either a pandas DataFrame with item-number columns (strings "5", "13",
+        "25", "28", "31") or a 2-D numpy array whose last axis contains those
+        five items in order.
+    items:
+        ``"full_subscale"`` uses items 5, 13, 25, 28, 31.
+        ``"without_time_distortion"`` drops item 25 and uses 5, 13, 28, 31.
+
+    Returns
+    -------
+    1-D array (or scalar for a single row) of mean Flow scores.
     """
-    if items == "full_subscale":
-        return raw_items
+    flow_items = ["5", "13", "25", "28", "31"]
     if items == "without_time_distortion":
-        # When raw items are available, remove the Time Distortion column(s).
-        # For pre-aggregated scores this is a no-op; the config controls which
-        # aggregated column is read by the loader.
-        return raw_items
-    raise ValueError(f"Unknown item strategy: {items}")
+        flow_items = ["5", "13", "28", "31"]
+    elif items != "full_subscale":
+        raise ValueError(f"Unknown item strategy: {items}")
+
+    if hasattr(raw_items, "columns"):
+        # pandas DataFrame
+        values = pd.to_numeric(raw_items[flow_items], errors="coerce").to_numpy(dtype=float)
+    else:
+        arr = np.asarray(raw_items, dtype=float)
+        # Assume last axis is in full-subscale order 5,13,25,28,31.
+        item_order = ["5", "13", "25", "28", "31"]
+        idx_map = {item: i for i, item in enumerate(item_order)}
+        keep_idx = [idx_map[item] for item in flow_items]
+        values = arr[..., keep_idx]
+    return np.nanmean(values, axis=-1)

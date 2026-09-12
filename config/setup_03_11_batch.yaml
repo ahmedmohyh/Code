@@ -1,0 +1,11 @@
+# YAML batch definition for running Setup 03 and Setup 11 sequentially.
+# Both setups recompute the GEQ Flow score from raw item responses.
+# Setup 03 uses the single-level design (level 1 only).
+# Setup 11 uses multiple classifiers and tests the same recomputation.
+
+batch_name: "setup_03_11_raw_geq"
+n_jobs: 10
+
+configs:
+  - "config/setup_03_without_time_distortion.yaml"
+  - "config/setup_11_raw_geq_without_time_distortion.yaml"

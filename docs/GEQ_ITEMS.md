@@ -143,8 +143,18 @@ The BIRAFFE2 metadata file has three 2018 Flow columns per subject:
 | `GEQ-2-FLOW-2018` | Flow subscale after game level 2 |
 | `GEQ-3-FLOW-2018` | Flow subscale after game level 3 |
 
-Each is the **average of the 5 Flow items** (5, 13, 25, 28, 31) for that level.
+Each is the **average of the 5 Flow item responses** (5, 13, 25, 28, 31) for that level, **minus 1** to rescale the 1–5 Likert response to a 0–4 score.
 They are **not** already aggregated across levels.
+
+### Exact scoring formula
+
+If a participant responded to item *i* with value *r<sub>i</sub>* on the 0–4 Likert scale, the BIRAFFE2 pre-computed Flow column is:
+
+```text
+GEQ-X-FLOW = mean(r_5, r_13, r_25, r_28, r_31) - 1
+```
+
+The subtraction shifts the response scale from 0–4 (Likert) to the reported 0–4 Flow score range. When the loader recomputes the Flow score from raw items (Setups 03 / 11), it uses the same formula so that the labels stay on the identical scale as the pre-computed metadata columns.
 
 In BIRAFFE2 the three scores have slightly different distributions:
 
@@ -193,11 +203,44 @@ now supports any number of score columns in level-as-subjects mode, so the GAME
 phase is split into six equal-duration segments and one real subject can yield
 up to 612 pseudo-subjects.
 
-## What Setup 03 should do
+## Setup 03 / Setup 11 — raw item recomputation without Time Distortion
 
-Setup 03 (`setup_03_without_time_distortion.yaml`) should recompute the Flow score
-from the raw GEQ items by averaging the Flow items **without item 25**, then apply
-the median split. Currently the config only changes a metadata field
-(`items: "without_time_distortion"`), but the `FlowLabeler` still reads the
-pre-computed `GEQ-1-FLOW-2018` column. To make Setup 03 meaningful, the loader or
-labeler needs to read the raw GEQ item responses and compute the custom Flow score.
+Both `setup_03_without_time_distortion.yaml` and
+`setup_11_raw_geq_without_time_distortion.yaml` now recompute the Flow score from the
+raw GEQ item responses instead of reading the pre-computed metadata column.
+
+Config flags used:
+
+```yaml
+raw_geq_dir: "../dataset/data/BIRAFFE2/Version 2"
+recompute_flow_from_items: true
+exclude_time_distortion: true
+```
+
+When `recompute_flow_from_items` is true, `BIRAFFE2Loader` reads the files
+`BIRAFFE2-metadata-RAW-GEQ-Level01.csv`, `Level02.csv`, `Level03.csv` and computes
+the per-level Flow score by averaging the relevant item columns.
+
+### Full Flow subscale vs. without Time Distortion
+
+| Variant | Items used |
+|---------|------------|
+| Full GEQ-R 2018 Flow | 5, 13, **25**, 28, 31 |
+| Without Time Distortion | 5, 13, 28, 31 |
+
+Item **25** is "I lost track of time". Excluding it tests whether the classic
+Time Distortion item is helping or hurting physiological prediction.
+
+### How the loader matches columns to levels
+
+The `score_column` name (e.g. `GEQ-1-FLOW-2018`) determines which raw GEQ level is
+used: the number after `GEQ-` is the level. For Setup 03 and Setup 11 the label is
+level 1 only, so the loader reads `BIRAFFE2-metadata-RAW-GEQ-Level01.csv` and
+averages items 5, 13, 28, 31 for each subject.
+
+### Why this matters
+
+The pre-computed `GEQ-1-FLOW-2018` column includes item 25. Simply dropping that
+column from the metadata is not enough; the score itself must be recomputed from
+the raw responses. The loader now does this automatically when the config flags are
+set, so both setups actually test the Flow-without-Time-Distortion label.

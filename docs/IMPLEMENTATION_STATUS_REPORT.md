@@ -1,6 +1,6 @@
 # Implementation Status Report — Flow-LoL ML Pipeline
 
-**Date:** 2026-09-06  
+**Date:** 2026-09-09  
 **Project:** Master's thesis — Real-time flow detection in League of Legends from physiological signals  
 **Student:** Ahmed Mousa  
 **Supervisor:** Cosima von Uechtritz
@@ -48,7 +48,8 @@ All setups below have been executed end-to-end on BIRAFFE2.
 | 01 single-level | ECG-only baseline, `GEQ-1-FLOW-2018` | 0.336 | 99 |
 | 01b avg-levels | ECG-only, mean of 3 GEQ Flow scores | 0.362 | 99 |
 | 02 margin 0.1 | Median split with 0.1 IQR margin | 0.358 | 92 |
-| 03 no time dist. | Without Time Distortion (aggregated column) | 0.336 | 99 |
+| 03 no time dist. | Recompute Flow without Time Distortion from raw items | 0.298 (RF) | 99 |
+| 11 raw no time dist. | Same as 03 with RF/LR/XGB | 0.299 (LR) / 0.298 (RF) / 0.268 (XGB) | 99 |
 | 04 no z-score | No z-standardisation | 0.336 | 99 |
 | 05 no outlier | No outlier removal | 0.382 | 102 |
 | 07 5-min window | 300 s fixed window | 0.237 | 90 |
@@ -76,20 +77,33 @@ variation.
 
 ## 3. What is not yet implemented
 
-### 3.1 Proper Setup 03 — Flow without Time Distortion
+### 3.1 Proper Setup 03 / Setup 11 — Flow without Time Distortion
 
-**What exists:** A config `setup_03_without_time_distortion.yaml` that simply reads
-`GEQ-1-FLOW-2018` and changes a flag.
+**Status:** Implemented, run, and verified.
 
-**What should happen:** Recompute the Flow score from the raw GEQ item responses
-(items 5, 13, 28, 31) by excluding item 25 ("I lost track of time"). This
-requires reading the raw GEQ CSVs (`BIRAFFE2-metadata-RAW-GEQ-Level01.csv`,
-`Level02.csv`, `Level03.csv`) and computing a custom Flow score.
+**What was added:**
+- Config flags `raw_geq_dir`, `recompute_flow_from_items`, and
+  `exclude_time_distortion` in `DatasetConfig`.
+- `BIRAFFE2Loader._load_raw_geq_items()` reads the raw GEQ CSVs
+  (`BIRAFFE2-metadata-RAW-GEQ-Level01.csv`, `Level02.csv`, `Level03.csv`).
+- `BIRAFFE2Loader._compute_raw_flow_score()` recomputes the Flow score from
+  items 5, 13, 28, 31 (or 5, 13, 25, 28, 31 when Time Distortion is kept) and
+  subtracts 1.0 to match the BIRAFFE2 pre-computed `mean(items) - 1` scale.
+- The loader infers the level from the configured `score_column` name
+  (e.g. `GEQ-1-FLOW-2018` -> level 1) and uses the matching raw CSV.
+- Both `setup_03_without_time_distortion.yaml` and
+  `setup_11_raw_geq_without_time_distortion.yaml` now use raw item
+  recomputation without Time Distortion.
+
+**Results:**
+- Setup 03 (RandomForest): subject-level AUC **0.298**, accuracy 0.424, F1 0.400, n=99.
+- Setup 11 (LogisticRegression best): subject-level AUC **0.299**; RandomForest 0.298, XGBoost 0.268, n=99.
+
+**Interpretation:** Excluding Time Distortion clearly worsens ECG-based Flow
+prediction. The low AUC is not a scaling bug; it reflects that the Time
+Distortion item carries signal that the remaining four Flow items do not.
 
 **Why it matters:** Supervisor comment #3 explicitly asks for this variant.
-
-**Open question:** Should the recomputation also support averaging across the
-three levels?
 
 ### 3.2 Baseline correction for BIRAFFE2
 
@@ -178,11 +192,14 @@ features only.
 
 ### 3.8 Experiment tracking and ablation comparison table
 
+**Status:** Ablation comparison table done.
+
 **What exists:** Each run writes its own JSON results.
 
-**What should happen:** Build a script that reads all `results/*/results.json`
-files and creates a single comparison table (CSV or Markdown) with all setups,
-metrics, and configs.
+**What was done:** `scripts/build_ablation_table.py` reads all
+`results/*/metrics.json` files and creates `results/ablation_comparison.md` and
+`results/ablation_comparison.csv` with experiment name, best model, accuracy,
+F1, AUC, and n.
 
 **Why it matters:** The thesis needs a clear ablation overview, not scattered per-run files.
 
@@ -298,12 +315,12 @@ live prototype (which will use raw webcam), but its performance is weak.
 
 | Priority | Task | Expected impact | Effort |
 |----------|------|-----------------|--------|
-| 0 | Implement proper Setup 11 — raw GEQ Flow without Time Distortion | Satisfies comment #3; tests another label variant | Low |
+| 0 | ✅ Implement proper Setup 11 — raw GEQ Flow without Time Distortion | Satisfies comment #3; tests another label variant | Low |
 | 1 | Implement Setup 12 — BIRAFFE2 baseline correction from procedure files | Satisfies comment #5; reduces subject-specific variance | Medium |
 | 2 | Implement EDA loader + features for Setup 06 | High — first real multimodal test | Medium |
 | 3 | Implement webcam loader for Setup 06 | High — adds behavioural signal | Medium |
 | 4 | Implement Setup 08 — Irshad/PhySF loader with EEG | Satisfies comment #9; only EEG dataset | Medium |
-| 5 | Build ablation comparison table script | Medium — thesis-grade overview | Low |
+| 5 | ✅ Build ablation comparison table script | Medium — thesis-grade overview | Low |
 | 6 | Wire permutation analysis | Satisfies comment #10; feature importance | Low |
 | 7 | Add biosppy ECG path | Satisfies comment #7; cross-package comparison | Low |
 | 8 | Wire deep learning models (Setup 10) | Satisfies comment #0; temporal/nonlinear patterns | High |
@@ -313,19 +330,11 @@ live prototype (which will use raw webcam), but its performance is weak.
 
 ## 6. Immediate decision needed
 
-Before continuing, decide which task to tackle first:
-
-1. **Setup 11 / raw GEQ recomputation without Time Distortion (comment #3)** —
-   small, contained, tests a different label definition.
-
-2. **Setup 12 / BIRAFFE2 baseline correction from procedure files (comment #5)** —
-   medium, tests whether removing subject-specific physiology helps.
-
-3. **Setup 06 / multimodal ECG + EDA + webcam (comment #12)** — larger, but
-   closest to the planned live prototype and most likely to improve AUC.
-
-4. **Build the ablation comparison table script** — low effort, gives an overview
-   of all current results to guide the next experiments.
+The next highest-priority task is **Setup 12 / BIRAFFE2 baseline correction from
+procedure files (comment #5)**. It is the most direct follow-up to the 01c/01g
+diagnostic: if subject-specific physiology is masking a real flow signal,
+baseline correction should improve strict person-level LOSO AUC. Setup 11 is now
+complete, and the ablation comparison table is already generated.
 
 ---
 

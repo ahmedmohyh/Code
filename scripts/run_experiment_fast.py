@@ -20,6 +20,7 @@ from flow_lol.utils.config import Config, load_config
 from flow_lol.data.loaders.biraffe2_loader import BIRAFFE2Loader
 from flow_lol.data.labelers.flow_labeler import FlowLabeler
 from flow_lol.preprocessing.cleaners.ecg_cleaner import clean_ecg
+from flow_lol.preprocessing.baseline_corrector import BaselineCorrector
 from flow_lol.preprocessing.per_subject_normaliser import PerSubjectNormaliser
 from flow_lol.segmentation.window_segmenter import WindowSegmenter
 from flow_lol.features.extractors.ecg_features import extract_ecg_features
@@ -36,38 +37,62 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*DFA_alpha2.*")
 
 
+def _extract_signal_features(signal_df, loader, segmenter, config):
+    """Clean, segment and extract ECG features from one signal DataFrame."""
+    if "ECG" not in signal_df.columns or signal_df.empty:
+        return None
+    ecg_raw = signal_df["ECG"].to_numpy(dtype=float)
+    ecg_clean = clean_ecg(
+        ecg_raw,
+        sampling_rate=loader.sample_rate,
+        package=config.preprocessing.cleaning_package,
+    )
+    windows = segmenter.segment(ecg_clean)
+    feats = []
+    for w in windows:
+        try:
+            f = extract_ecg_features(
+                w["signal"],
+                sampling_rate=loader.sample_rate,
+                package=config.features.package,
+                selected_time=config.features.ecg.time,
+                selected_frequency=config.features.ecg.frequency,
+                selected_nonlinear=config.features.ecg.nonlinear,
+            )
+            feats.append(f)
+        except Exception:
+            continue
+    if not feats:
+        return None
+    X, _ = features_to_matrix(feats)
+    X = impute_missing(X, strategy="median")
+    return X
+
+
 def _process_one_subject(args_tuple):
-    """Process one subject: clean, segment, extract features."""
+    """Process one subject: clean, segment, extract features, optionally baseline-correct."""
     sid, loader, segmenter, config, label = args_tuple
     try:
         record = loader.load_subject(sid)
-        ecg_raw = record["signal"]["ECG"].to_numpy(dtype=float)
-        ecg_clean = clean_ecg(
-            ecg_raw,
-            sampling_rate=loader.sample_rate,
-            package=config.preprocessing.cleaning_package,
-        )
-        windows = segmenter.segment(ecg_clean)
-        feats = []
-        for w in windows:
-            try:
-                f = extract_ecg_features(
-                    w["signal"],
-                    sampling_rate=loader.sample_rate,
-                    package=config.features.package,
-                    selected_time=config.features.ecg.time,
-                    selected_frequency=config.features.ecg.frequency,
-                    selected_nonlinear=config.features.ecg.nonlinear,
-                )
-                feats.append(f)
-            except Exception:
-                continue
-        if not feats:
+        X = _extract_signal_features(record["signal"], loader, segmenter, config)
+        if X is None:
             return sid, None, None, label, 0
-        X, feature_names = features_to_matrix(feats)
-        X = impute_missing(X, strategy="median")
+
+        baseline_correction = getattr(config.preprocessing, "baseline_correction", "none")
+        if baseline_correction in ("change_score", "quotient"):
+            baseline_signal = loader.load_baseline_signal(
+                sid,
+                max_length_s=float(config.preprocessing.baseline_length_s),
+            )
+            baseline_X = _extract_signal_features(baseline_signal, loader, segmenter, config)
+            if baseline_X is not None and baseline_X.shape[0] > 0:
+                corrector = BaselineCorrector(method=baseline_correction)
+                X = corrector.fit_transform(baseline_X, X)
+            else:
+                print(f"  [warn {sid}] no baseline features; leaving game features uncorrected")
+
         y = np.full(len(X), fill_value=label, dtype=int)
-        return sid, X, y, label, len(feats)
+        return sid, X, y, label, len(X)
     except Exception as e:
         return sid, None, None, label, f"ERROR: {e}"
 
