@@ -180,34 +180,42 @@ subject-level flow score that better represents the player's overall experience 
 the entire recording. This is implemented in the separate config
 `setup_01_biraffe2_ecg_baseline_avg_levels.yaml`.
 
+## Level-as-subjects approximation
+
+Several setups (01c, 01g, 03, 11) treat each game level as a separate
+"pseudo-subject" to obtain time-varying labels. The procedure file provides only
+`GAME START` and `GAME END`, not the boundaries between levels. Therefore the
+loader splits the GAME phase into **N equal-duration segments** (N = number of
+levels) and assigns each segment the label of the corresponding level:
+
+- Segment 1 = first 1/N of GAME phase → label from level 1
+- Segment 2 = second 1/N of GAME phase → label from level 2
+- Segment N = last 1/N of GAME phase → label from level N
+
+For the 3-level designs this means:
+
+- Pseudo-subject `103000` = subject 103, **first third of GAME phase**, label from level 1
+- Pseudo-subject `103001` = subject 103, **second third of GAME phase**, label from level 2
+- Pseudo-subject `103002` = subject 103, **third third of GAME phase**, label from level 3
+
+> **Important limitation:** This assumes the levels took roughly equal time and
+> happened in order. The biosignal assigned to pseudo-subject "level 1" is the
+> first third of the GAME phase, not the exact physiological segment of level 1.
+
 ## Setup 01c — each level as a separate pseudo-subject
 
-Instead of averaging the three level scores, Setup 01c (`setup_01c_biraffe2_ecg_levels_as_subjects.yaml`)
-treats each level as an independent pseudo-subject. It uses the GAME START and GAME END
-timestamps from the BIRAFFE2 procedure files to split the continuous recording into
-three equal-duration segments, then labels each segment with the matching level-specific
-Flow score:
-
-- Segment 1 → `GEQ-1-FLOW-2018`
-- Segment 2 → `GEQ-2-FLOW-2018`
-- Segment 3 → `GEQ-3-FLOW-2018`
-
-This creates up to 306 pseudo-subjects from 102 real subjects and is the closest the
-current pipeline can get to time-varying labels without raw item-level recomputation.
-The exact level boundaries are approximated because BIRAFFE2 does not record when
-level 1 ends and level 2 begins.
-
-Setup 01g (`setup_01g_levels_as_subjects_per_subject_norm.yaml`) extends this
-design to six score columns by adding the three GEQ 2013 Flow scores. The loader
-now supports any number of score columns in level-as-subjects mode, so the GAME
-phase is split into six equal-duration segments and one real subject can yield
-up to 612 pseudo-subjects.
+Setup 01c (`setup_01c_biraffe2_ecg_levels_as_subjects.yaml`) uses the labels from
+the metadata columns `GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, and `GEQ-3-FLOW-2018`
+and applies the level-as-subjects approximation described above. This creates up to
+306 pseudo-subjects from 102 real subjects. Setup 01g extends the same approach
+to six levels by also including the three `GEQ-*-FLOW-2013` columns.
 
 ## Setup 03 / Setup 11 — raw item recomputation without Time Distortion
 
 Both `setup_03_without_time_distortion.yaml` and
 `setup_11_raw_geq_without_time_distortion.yaml` now recompute the Flow score from the
-raw GEQ item responses instead of reading the pre-computed metadata column.
+raw GEQ item responses instead of reading the pre-computed metadata column, and
+they treat each of the three game levels as a separate pseudo-subject.
 
 Config flags used:
 
@@ -215,6 +223,8 @@ Config flags used:
 raw_geq_dir: "../dataset/data/BIRAFFE2/Version 2"
 recompute_flow_from_items: true
 exclude_time_distortion: true
+treat_levels_as_subjects: true
+raw_geq_levels: [1, 2, 3]
 ```
 
 When `recompute_flow_from_items` is true, `BIRAFFE2Loader` reads the files
@@ -233,14 +243,46 @@ Time Distortion item is helping or hurting physiological prediction.
 
 ### How the loader matches columns to levels
 
-The `score_column` name (e.g. `GEQ-1-FLOW-2018`) determines which raw GEQ level is
-used: the number after `GEQ-` is the level. For Setup 03 and Setup 11 the label is
-level 1 only, so the loader reads `BIRAFFE2-metadata-RAW-GEQ-Level01.csv` and
-averages items 5, 13, 28, 31 for each subject.
+The `raw_geq_levels` list explicitly selects which raw GEQ levels to use. In
+`setup_03_without_time_distortion.yaml` and `setup_11_raw_geq_without_time_distortion.yaml`
+this list is `[1, 2, 3]`. The `score_column` value (`GEQ-1-FLOW-2018`) is **not**
+read as a label; it is kept only as a fallback for level inference when
+`raw_geq_levels` is not provided.
+
+### Pseudo-subject design
+
+Because `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]`, the
+loader:
+
+1. Reads the GAME START / GAME END timestamps from the BIRAFFE2 procedure file.
+2. Splits the GAME phase into three equal-duration segments.
+3. For each segment, recomputes the Flow score from raw items 5, 13, 28, 31.
+4. Creates up to **306 pseudo-subjects** from 102 real subjects.
+
+This is the same level-as-subjects logic as Setup 01c, but the labels are now
+recomputed without the Time Distortion item. It answers the question:
+
+> *If each level has its own Time-Distortion-free Flow label, can ECG predict it?*
+
+Because the GAME phase is split into three equal-duration segments, the
+biosignal-to-label alignment is approximate, just as in Setup 01c. Setup 12 uses
+the same level-as-subjects design but with the standard GEQ-R 2018 labels and
+adds resting-segment baseline correction.
+
+### Results
+
+After rerun, both setups achieved subject-level AUC **0.618** with RandomForest on
+260 pseudo-subjects (accuracy 0.573, F1 0.571). Setup 11 per-model AUCs:
+RandomForest 0.618, LogisticRegression 0.579, XGBoost 0.543. This is very close
+to Setup 01c (0.630) but slightly lower, suggesting that the Time Distortion item
+contributes a small amount of useful signal for this ECG-based classifier, or
+that removing it slightly destabilises the label distribution.
 
 ### Why this matters
 
 The pre-computed `GEQ-1-FLOW-2018` column includes item 25. Simply dropping that
 column from the metadata is not enough; the score itself must be recomputed from
 the raw responses. The loader now does this automatically when the config flags are
-set, so both setups actually test the Flow-without-Time-Distortion label.
+set, so both setups actually test the Flow-without-Time-Distortion label. With
+`raw_geq_levels` and `treat_levels_as_subjects`, the setups also avoid the
+single-label-per-subject limitation of the first implementation.

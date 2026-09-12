@@ -326,13 +326,30 @@ the valid subject-level AUC.
 (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`) as a more session-level
 label, but it is still **one label per subject**.
 
-**Setup 01c** avoids this limitation by reading the GAME START / GAME END times
-from the BIRAFFE2 procedure files, splitting the GAME phase into N equal
-segments (where N equals the number of configured score columns), and creating
-one pseudo-subject per level. The loader functions `_load_procedure_times()`,
-`_find_event_time()`, and `_crop_to_level()` handle this. The result is a
-time-varying label per level, but the split is an approximation because exact
-level transitions are not recorded.
+**Setup 01c**, the redesigned **Setups 03 / 11**, and **Setup 12** avoid this
+limitation by reading the `GAME START` / `GAME END` timestamps from the BIRAFFE2
+procedure files and splitting the GAME phase into **N equal-duration segments**,
+where N is the number of configured levels. Each segment is treated as a separate
+pseudo-subject and receives the label of the corresponding level:
+
+- Segment 1 = first 1/N of GAME phase → label from level 1
+- Segment 2 = second 1/N of GAME phase → label from level 2
+- Segment N = last 1/N of GAME phase → label from level N
+
+For the 3-level designs this means:
+
+- Pseudo-subject `103000` = subject 103, **first third of GAME phase**, label from level 1
+- Pseudo-subject `103001` = subject 103, **second third of GAME phase**, label from level 2
+- Pseudo-subject `103002` = subject 103, **third third of GAME phase**, label from level 3
+
+> **Important limitation:** BIRAFFE2 does **not** record exact level-transition
+> timestamps. The loader therefore assumes the three levels occupied roughly
+> equal time and happened in order inside the GAME phase. The biosignal assigned
+> to pseudo-subject "level 1" is the first third of the GAME phase, not
+> necessarily the exact physiological segment of level 1.
+
+The loader functions `_load_procedure_times()`, `_find_event_time()`, and
+`_crop_to_level()` implement this split.
 
 ---
 
@@ -347,8 +364,8 @@ level transitions are not recorded.
 | Read metadata CSV | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_metadata()` | Loads GEQ scores |
 | Return valid subjects | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader.list_subjects()` | Filters 102 valid subjects |
 | Load one subject | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader.load_subject()` | Reads CSV, returns signal + label |
-| Crop to level segment (Setup 01c/01g) | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._crop_to_level()` | Splits GAME phase into N equal parts |
-| Read procedure events | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_procedure_times()` | Caches GAME START/END per subject |
+| Crop to level segment (Setups 01c/01g/03/11/12) | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._crop_to_level()` | Splits GAME phase into N equal parts |
+| Read procedure events | `flow_lol/data/loaders/biraffe2_loader.py` | `BIRAFFE2Loader._load_procedure_times()` | Caches GAME START/END and BASELINE START/END per subject |
 | Create binary labels | `flow_lol/data/labelers/flow_labeler.py` | `FlowLabeler.fit_transform()` | Median split → 0/1 labels |
 | Cache zip contents | `scripts/run_experiment_fast.py` | `_cache_subject()` | Extracts CSVs to `cache/biosigs/` |
 | Cut signal into windows | `flow_lol/segmentation/window_segmenter.py` | `WindowSegmenter.segment()` | 60 s windows, 30 s step |
@@ -361,4 +378,5 @@ level transitions are not recorded.
 | One fold | `flow_lol/validation/loso_cv.py` | `_run_single_fold()` | Outliers, z-score, train, predict |
 | Subject aggregation | `flow_lol/validation/loso_cv.py` | `_subject_level_aggregate()` | One label/prediction per subject |
 | Build classifier | `flow_lol/models/classical.py` | `build_classifier()` | Returns `RandomForestClassifier` |
+| Baseline correction | `scripts/run_experiment_fast.py` | `_process_one_subject()` | `window_feature − baseline_feature` |
 | Save results | `flow_lol/reporting/ablation_table.py` | `save_results()` | Writes JSON + config YAML |

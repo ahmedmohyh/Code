@@ -1,5 +1,7 @@
-# Base configuration for the Flow-LoL pipeline.
-# Copy and modify this file for each ablation setup.
+# Setup 03: recompute the GEQ Flow score from the raw item responses, excluding
+# item 25 ("I lost track of time"), and treat each of the three game levels as a
+# separate pseudo-subject. This tests whether Time Distortion is helping or
+# hurting physiological prediction while using time-varying labels.
 
 experiment_name: "setup_03_without_time_distortion"
 seed: 42
@@ -8,13 +10,17 @@ dataset:
   name: "BIRAFFE2"
   path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
   metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
   modalities:
     - "ECG"
+  # score_column is only used as a fallback to infer the GEQ level when
+  # raw_geq_levels is not set. The actual label is recomputed from the raw CSVs.
   score_column: "GEQ-1-FLOW-2018"
+  treat_levels_as_subjects: true
   raw_geq_dir: "../dataset/data/BIRAFFE2/Version 2"
   recompute_flow_from_items: true
   exclude_time_distortion: true
-  items: "without_time_distortion"
+  raw_geq_levels: [1, 2, 3]
 
 label:
   method: "median_split"
