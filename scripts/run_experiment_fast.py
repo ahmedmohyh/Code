@@ -40,15 +40,37 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", message=".*DFA_alpha2.*")
 
 
-def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None):
+def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None, _diag_prefix=""):
     """Clean, segment and extract ECG, EDA and webcam features from one signal DataFrame.
 
     The function is fully backward-compatible: if only ECG is requested, it
     returns the same matrix as before. EDA and FACE features are only added
     when those modalities are present in the config.
+
+    Returns
+    -------
+    (X, feature_names, diagnostics_dict)
     """
+    diag = {
+        "signal_rows": len(signal_df),
+        "ecg_missing": False,
+        "signal_empty": False,
+        "n_windows": 0,
+        "eda_requested": False,
+        "eda_present": False,
+        "eda_cleaning_ok": False,
+        "face_requested": False,
+        "face_present": False,
+        "face_windows_with_data": 0,
+        "empty_ecg_windows": 0,
+        "drop_reason": None,
+    }
+
     if "ECG" not in signal_df.columns or signal_df.empty:
-        return None, []
+        diag["ecg_missing"] = "ECG" not in signal_df.columns
+        diag["signal_empty"] = signal_df.empty
+        diag["drop_reason"] = "no_ecg_or_empty_signal"
+        return None, [], diag
 
     modalities = [m.upper() for m in getattr(config.dataset, "modalities", ["ECG"])]
 
@@ -60,8 +82,10 @@ def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None)
         package=config.preprocessing.cleaning_package,
     )
     windows = segmenter.segment(ecg_clean)
+    diag["n_windows"] = len(windows)
     if not windows:
-        return None, []
+        diag["drop_reason"] = "no_windows"
+        return None, [], diag
 
     ecg_feats = []
     for w in windows:
@@ -75,17 +99,23 @@ def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None)
                 selected_nonlinear=config.features.ecg.nonlinear,
             )
             ecg_feats.append(f)
+            if not f:
+                diag["empty_ecg_windows"] += 1
         except Exception:
             ecg_feats.append({})
+            diag["empty_ecg_windows"] += 1
 
     # --- EDA features (same time grid) ---
     eda_feats = []
-    if "EDA" in modalities and "EDA" in signal_df.columns:
+    diag["eda_requested"] = "EDA" in modalities
+    diag["eda_present"] = "EDA" in signal_df.columns
+    if diag["eda_requested"] and diag["eda_present"]:
         eda_raw = signal_df["EDA"].to_numpy(dtype=float)
         try:
             eda_cleaned = clean_eda(eda_raw, sampling_rate=loader.sample_rate, package="neurokit2")
             tonic = eda_cleaned["tonic"]
             phasic = eda_cleaned["phasic"]
+            diag["eda_cleaning_ok"] = True
             for w in windows:
                 start = w["start_sample"]
                 end = w["end_sample"]
@@ -95,11 +125,13 @@ def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None)
                 except Exception:
                     eda_feats.append({})
         except Exception as e:
-            print(f"  [warn] EDA cleaning failed: {e}")
+            print(f"  {_diag_prefix}[warn] EDA cleaning failed: {e}")
 
     # --- Webcam / face features (aligned by absolute GAME-TIMESTAMP) ---
     face_feats = []
-    if "FACE" in modalities and face_df is not None and not face_df.empty:
+    diag["face_requested"] = "FACE" in modalities
+    diag["face_present"] = face_df is not None and not face_df.empty
+    if diag["face_requested"] and diag["face_present"]:
         ts_col = "GAME-TIMESTAMP"
         if ts_col in face_df.columns:
             timestamps = signal_df["TIMESTAMP"].to_numpy(dtype=float)
@@ -115,6 +147,8 @@ def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None)
                         timestamp_col=ts_col,
                     )
                     face_feats.append(f)
+                    if f:
+                        diag["face_windows_with_data"] += 1
                 except Exception:
                     face_feats.append({})
 
@@ -130,21 +164,29 @@ def _extract_signal_features(signal_df, loader, segmenter, config, face_df=None)
         merged.append(m)
 
     if not merged or all(not m for m in merged):
-        return None, []
+        diag["drop_reason"] = "all_windows_empty"
+        return None, [], diag
     X, feature_names = features_to_matrix(merged)
     X = impute_missing(X, strategy="median")
-    return X, feature_names
+    return X, feature_names, diag
 
 
 def _process_one_subject(args_tuple):
     """Process one subject: clean, segment, extract features, optionally baseline-correct."""
     sid, loader, segmenter, config, label = args_tuple
+    diag = {"sid": sid, "face_status": "unknown", "stage": "ok"}
     try:
         record = loader.load_subject(sid)
         face_df = record.get("face")
-        X, names = _extract_signal_features(record["signal"], loader, segmenter, config, face_df=face_df)
+        diag["face_status"] = record.get("face_status", "unknown")
+        X, names, feat_diag = _extract_signal_features(
+            record["signal"], loader, segmenter, config, face_df=face_df,
+            _diag_prefix=f"[{sid}] ",
+        )
+        diag.update(feat_diag)
         if X is None:
-            return sid, None, None, label, 0
+            diag["stage"] = "dropped_in_feature_extraction"
+            return sid, None, None, label, diag
 
         baseline_correction = getattr(config.preprocessing, "baseline_correction", "none")
         if baseline_correction in ("change_score", "quotient"):
@@ -152,7 +194,7 @@ def _process_one_subject(args_tuple):
                 sid,
                 max_length_s=float(config.preprocessing.baseline_length_s),
             )
-            baseline_X, _ = _extract_signal_features(
+            baseline_X, _, _ = _extract_signal_features(
                 baseline_signal, loader, segmenter, config, face_df=face_df
             )
             if baseline_X is not None and baseline_X.shape[0] > 0:
@@ -165,9 +207,10 @@ def _process_one_subject(args_tuple):
                 print(f"  [warn {sid}] no baseline features; leaving game features uncorrected")
 
         y = np.full(len(X), fill_value=label, dtype=int)
-        return sid, X, y, label, names
+        return sid, X, y, label, (names, diag)
     except Exception as e:
-        return sid, None, None, label, f"ERROR: {e}"
+        diag["stage"] = f"ERROR: {e}"
+        return sid, None, None, label, diag
 
 
 def _load_label_from_metadata(loader: BIRAFFE2Loader, sid: int) -> float:
@@ -185,7 +228,11 @@ def load_biraffe2_data_fast(config: Config, n_jobs: int = -1, cache_dir: str = "
     """Load and process BIRAFFE2 data in parallel."""
     loader = BIRAFFE2Loader(config.dataset, cache_dir=cache_dir)
     subjects = loader.list_subjects()
-    print(f"Found {len(subjects)} valid subjects.")
+    n_levels = loader._level_count() if getattr(config.dataset, "treat_levels_as_subjects", False) else 1
+    real_count = len(loader.available_files)
+    print(f"[pipeline] real subjects in biosig archive: {real_count}")
+    print(f"[pipeline] expected pseudo-subjects: {real_count * n_levels}")
+    print(f"[pipeline] pseudo-subjects with valid label metadata: {len(subjects)}")
 
     # Fast label lookup from metadata (no signal loading)
     scores = np.array([_load_label_from_metadata(loader, sid) for sid in subjects])
@@ -196,6 +243,7 @@ def load_biraffe2_data_fast(config: Config, n_jobs: int = -1, cache_dir: str = "
     print(f"Median={labeler.median_:.3f}, IQR={labeler.iqr_:.3f}")
 
     active_subjects = [sid for i, sid in enumerate(subjects) if mask[i]]
+    print(f"[pipeline] pseudo-subjects after label exclusion mask: {len(active_subjects)}")
 
     # Pre-extract all needed biosignals from the zip once, with a progress bar.
     # After this step the parallel workers read plain CSVs, not the shared zip.
@@ -241,21 +289,85 @@ def load_biraffe2_data_fast(config: Config, n_jobs: int = -1, cache_dir: str = "
     y_by_subject = {}
     feature_names = []
     skipped = 0
+    diagnostics = {
+        "processed": 0,
+        "kept": 0,
+        "dropped_no_signal": 0,
+        "dropped_no_windows": 0,
+        "dropped_all_windows_empty": 0,
+        "dropped_other": 0,
+        "face_present_count": 0,
+        "face_missing_count": 0,
+        "eda_cleaning_ok_count": 0,
+        "eda_cleaning_fail_count": 0,
+        "total_windows_kept": 0,
+        "per_subject": [],
+    }
     for sid, X, y, label, info in results:
+        diagnostics["processed"] += 1
         if X is None:
             skipped += 1
-            print(f"  [skip {sid}] {info}")
+            if isinstance(info, dict):
+                diagnostics["per_subject"].append(info)
+                if info.get("drop_reason") == "no_ecg_or_empty_signal":
+                    diagnostics["dropped_no_signal"] += 1
+                elif info.get("drop_reason") == "no_windows":
+                    diagnostics["dropped_no_windows"] += 1
+                elif info.get("drop_reason") == "all_windows_empty":
+                    diagnostics["dropped_all_windows_empty"] += 1
+                else:
+                    diagnostics["dropped_other"] += 1
+                if info.get("face_present"):
+                    diagnostics["face_present_count"] += 1
+                else:
+                    diagnostics["face_missing_count"] += 1
+                if info.get("eda_cleaning_ok"):
+                    diagnostics["eda_cleaning_ok_count"] += 1
+                elif info.get("eda_requested"):
+                    diagnostics["eda_cleaning_fail_count"] += 1
+                print(f"  [skip {sid}] drop_reason={info.get('drop_reason')}, "
+                      f"signal_rows={info.get('signal_rows')}, windows={info.get('n_windows')}, "
+                      f"face={info.get('face_present')}, eda_ok={info.get('eda_cleaning_ok')}, "
+                      f"face_status={info.get('face_status')}")
+            else:
+                diagnostics["dropped_other"] += 1
+                print(f"  [skip {sid}] {info}")
             continue
         X_by_subject[sid] = X
         y_by_subject[sid] = y
-        if not feature_names and isinstance(info, list):
-            feature_names = info
+        diagnostics["kept"] += 1
+        diagnostics["total_windows_kept"] += X.shape[0]
+        names, sub_diag = info if isinstance(info, tuple) else ([], {})
+        if sub_diag:
+            diagnostics["per_subject"].append(sub_diag)
+            if sub_diag.get("face_present"):
+                diagnostics["face_present_count"] += 1
+            else:
+                diagnostics["face_missing_count"] += 1
+            if sub_diag.get("eda_cleaning_ok"):
+                diagnostics["eda_cleaning_ok_count"] += 1
+            elif sub_diag.get("eda_requested"):
+                diagnostics["eda_cleaning_fail_count"] += 1
+        if not feature_names and isinstance(names, list):
+            feature_names = names
 
     # Recover feature names from config if the runner did not return them.
     if not feature_names:
         feature_names = list(config.features.ecg.time + config.features.ecg.frequency + config.features.ecg.nonlinear)
 
     print(f"Subjects used: {len(X_by_subject)}, skipped: {skipped}")
+    print(
+        f"[extraction diag] processed={diagnostics['processed']}, kept={diagnostics['kept']}, "
+        f"dropped_no_signal={diagnostics['dropped_no_signal']}, "
+        f"dropped_no_windows={diagnostics['dropped_no_windows']}, "
+        f"dropped_all_windows_empty={diagnostics['dropped_all_windows_empty']}, "
+        f"dropped_other={diagnostics['dropped_other']}, "
+        f"face_present={diagnostics['face_present_count']}, "
+        f"face_missing={diagnostics['face_missing_count']}, "
+        f"eda_ok={diagnostics['eda_cleaning_ok_count']}, "
+        f"eda_fail={diagnostics['eda_cleaning_fail_count']}, "
+        f"total_windows_kept={diagnostics['total_windows_kept']}"
+    )
     if feature_names:
         print(f"Feature count: {len(feature_names)}")
 

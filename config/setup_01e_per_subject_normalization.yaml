@@ -69,7 +69,7 @@ models:
 
 validation:
   strategy: "LOSO"
-  permutation: false
+  permutation: true
   metrics:
     - "accuracy"
     - "f1_macro"

@@ -39,7 +39,7 @@ flow_lol/
 ├── validation/
 │   ├── loso_cv.py                       # leave-one-subject-out cross-validation
 │   ├── metrics.py                       # accuracy, F1, per-class P/R, AUC, inference time
-│   └── permutation.py (inside metrics.py) # feature permutation importance
+│   └── permutation analysis inside LOSO CV  # feature permutation importance, grouped by ECG/EDA/FACE
 ├── reporting/ablation_table.py        # save metrics + config per run
 └── utils/config.py                      # dataclass-based config loader
 ```
@@ -116,6 +116,13 @@ flow_lol/
   - RandomForest subject-level AUC = **0.618**, accuracy = 0.573, F1 = 0.571, n = 260 pseudo-subjects.
   - Setup 11 per-model AUCs: RandomForest 0.618, LogisticRegression 0.579, XGBoost 0.543.
   - This is slightly below Setup 01c (0.630), suggesting removing item 25 (Time Distortion) makes prediction marginally harder.
+- ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): RandomForest AUC=0.691, n=223 — new best result.
+- ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC=0.633, n=107 valid AUC folds; 273 pseudo-subjects entered LOSO and 166 folds were skipped.
+- ✅ Diagnosed Setup 06 fold-skip root cause: `train_only` IQR outlier removal drops 77.6% of training windows with 43 multimodal features, emptying test sets for short-segment pseudo-subjects.
+- ✅ Fixed Setup 06 config: changed `outlier_strategy` from `train_only` to `none`.
+- ✅ Re-ran Setup 06: RandomForest AUC=**0.617**, n=**273** valid AUC folds (0 skipped); the lower AUC is the honest estimate over all pseudo-subjects.
+- ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10). Per-feature and per-feature-group (ECG/EDA/FACE) drops are stored in `metrics.json` and aggregated across folds.
+- ✅ Created `config/batch_permutation_setups.yaml` to run permutation analysis on all 16 previously executed setups with all CPU cores via `scripts/run_batch_from_config.py`.
 
 ## Unified To-Do List — Cover All Supervisor Comments + Missing Setups
 
@@ -127,14 +134,14 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 |---|------|--------------------|--------|------------------------------|
 | 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Reran with `raw_geq_levels: [1,2,3]`: RF AUC=0.618, n=260; LR=0.579, XGB=0.543 |
 | 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ✅ Done | Ran with 3 levels as pseudo-subjects + 5 classifiers; RandomForest AUC=0.691, n=223 |
-| 3 | Setup 06 — multimodal ECG + EDA + webcam | 12 | ✅ Done | Ran with ECG+EDA+FACE, 3 levels as pseudo-subjects; RF AUC=0.633, n=107 |
+| 3 | Setup 06 — multimodal ECG + EDA + webcam affect | 12 | ✅ Fixed | Config updated to `outlier_strategy: none`; rerun AUC=0.617, n=273; full batch below |
 | 4 | Setup 08 — Irshad/PhySF loader with EEG | 9 | 🔄 Config only | Confirm dataset format/path, implement loader with ECG + EDA + EEG + baseline correction, run it |
 
 ### Medium priority — methodological completeness
 
 | # | Task | Supervisor comment | Status | What exactly needs to be done |
 |---|------|--------------------|--------|------------------------------|
-| 5 | Wire permutation analysis into runner | 10 | ❌ Not done | Call `compute_permutation_importance()` inside LOSO CV, store per-feature and per-feature-group importance in results JSON |
+| 5 | Wire permutation analysis into runner | 10 | ✅ Done | `compute_permutation_importance()` runs inside LOSO CV when `permutation: true`; per-feature and per-group drops stored in `metrics.json`; batch YAML created |
 | 6 | Biosppy ECG cleaning/features config | 7 | ❌ Not done | Wire biosppy path in `ecg_cleaner.py` and feature extractor, create and run a biosppy config |
 | 7 | Finish Setup 10 — wire deep learning models (MLP/LSTM/CNN1D) into runner | 0 | 🔄 Config only | Integrate models from `flow_lol/models/deep.py` into `run_experiment_fast.py`, handle sequences vs flat features |
 
@@ -158,14 +165,14 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 7. ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]` (up to 306 pseudo-subjects). Final subject-level AUC=0.618 with RandomForest (n=260), LR=0.579, XGB=0.543.
 
 ### Short-term (complete the 10 setups)
-4. ❌ Implement BIRAFFE2 webcam loader (`flow_lol/data/loaders/biraffe2_face_loader.py`).
+4. ✅ Implement BIRAFFE2 webcam loader (`flow_lol/data/loaders/biraffe2_face_loader.py`).
 5. ❌ Implement Irshad/PhySF loader.
-6. ❌ Integrate EDA features into `run_experiment.py` for Setup 06.
+6. ✅ Integrate EDA features into `run_experiment.py` for Setup 06.
 7. ❌ Integrate EEG features for Setup 08.
-8. ❌ Implement baseline-segment extraction from BIRAFFE2 procedure files.
+8. ✅ Implement baseline-segment extraction from BIRAFFE2 procedure files.
 9. 🔄 Add biosppy feature extraction path (heartpy done).
 10. ❌ Wire up deep models in the runner.
-11. ❌ Add permutation analysis to the runner.
+11. ✅ Add permutation analysis to the runner.
 
 ### Medium-term (thesis-grade quality)
 12. ❌ Add experiment tracking (MLflow or local CSV).
@@ -176,12 +183,18 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 ## How to proceed
 
-Setup 12 produced the best result so far (AUC = 0.691). Setup 06 ran successfully
-(ECG+EDA+FACE) but only reached AUC = 0.633 on 107 pseudo-subjects. The next
-recommended steps are now:
+Setup 12 produced the best result so far (AUC = 0.691). Setup 06 had a LOSO
+fold-skip problem: 166 of 273 folds were skipped because `train_only` IQR
+outlier removal drops 77.6% of training windows with 43 multimodal features.
+After fixing the config to `outlier_strategy: none`, Setup 06 re-ran with
+AUC = 0.617 on all 273 pseudo-subjects. The next recommended steps are now:
 
-1. **Permutation analysis:** wire feature importance into LOSO CV (comment #10).
-2. **Biosppy path:** add the missing cross-package comparison (comment #7).
-3. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
-4. **Visualisations:** confusion matrices, feature-importance plots, learning curves.
-5. **Investigate Setup 06 coverage:** understand why only 107/306 pseudo-subjects produced valid features.
+1. **Run the full permutation batch (includes fixed Setup 06):**
+   ```bash
+   python scripts/run_batch_from_config.py --batch config/batch_permutation_setups.yaml
+   ```
+   If interrupted, resume with the same command plus `--resume`.
+2. **Regenerate tables:** `python scripts/build_ablation_table.py`.
+3. **Biosppy path:** add the missing cross-package comparison (comment #7).
+4. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
+5. **Visualisations:** confusion matrices, feature importance plots, learning curves.

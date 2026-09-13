@@ -9,7 +9,12 @@ from tqdm import tqdm
 
 from flow_lol.preprocessing.normaliser import ZStandardiser
 from flow_lol.preprocessing.outlier_handler import OutlierHandler
-from flow_lol.validation.metrics import add_inference_time, compute_metrics, compute_permutation_importance
+from flow_lol.validation.metrics import (
+    add_inference_time,
+    aggregate_permutation_importance,
+    compute_metrics,
+    compute_permutation_importance,
+)
 
 
 def _run_single_fold(
@@ -267,9 +272,15 @@ def run_loso_cv(
 
     subject_aggregate = _subject_level_aggregate(fold_results)
 
-    return {
+    result = {
         "fold_results": fold_results,
         "aggregate": window_aggregate,
         "subject_aggregate": subject_aggregate,
         "n_subjects": len(subjects),
     }
+
+    perm_agg = aggregate_permutation_importance(fold_results)
+    if perm_agg is not None:
+        result["permutation_importance"] = perm_agg
+
+    return result

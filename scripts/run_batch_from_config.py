@@ -72,9 +72,31 @@ def read_subject_auc(root: Path, experiment_name: str) -> dict:
     return {}
 
 
+def _progress_path(root: Path, batch_name: str) -> Path:
+    return root / "results" / f".{batch_name}_progress.json"
+
+
+def _load_progress(path: Path) -> set:
+    if not path.exists():
+        return set()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return set(data.get("completed", []))
+    except Exception:
+        return set()
+
+
+def _save_progress(path: Path, completed: set, failed: list):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump({"completed": sorted(completed), "failed": failed}, f, indent=2)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Run a batch of experiment configs from a YAML list.")
     parser.add_argument("--batch", required=True, help="Path to the batch YAML file")
+    parser.add_argument("--resume", action="store_true", help="Skip configs that already completed successfully")
     args = parser.parse_args()
 
     root = Path(__file__).parent.parent
@@ -87,16 +109,34 @@ def main():
         print("No configs found in batch YAML.")
         sys.exit(1)
 
+    progress_path = _progress_path(root, batch_name)
+    completed = _load_progress(progress_path)
+
     print(f"\nBatch: {batch_name}")
     print(f"Number of configs: {len(configs)}")
     print(f"n_jobs per config: {n_jobs}")
+    if args.resume:
+        print(f"Resuming: {len(completed)} already completed")
+    print(f"Progress file: {progress_path}")
 
     results = []
     failures = []
 
     for cfg_path in configs:
-        success = run_single(cfg_path, n_jobs, root)
         experiment_name = Path(cfg_path).stem
+        if args.resume and cfg_path in completed:
+            print(f"\n[SKIP] {cfg_path} — already completed")
+            metrics = read_subject_auc(root, experiment_name)
+            results.append({
+                "config": cfg_path,
+                "experiment": experiment_name,
+                "success": True,
+                "skipped": True,
+                **metrics,
+            })
+            continue
+
+        success = run_single(cfg_path, n_jobs, root)
         metrics = read_subject_auc(root, experiment_name) if success else {}
         results.append({
             "config": cfg_path,
@@ -104,8 +144,12 @@ def main():
             "success": success,
             **metrics,
         })
-        if not success:
+        if success:
+            completed.add(cfg_path)
+            _save_progress(progress_path, completed, failures)
+        else:
             failures.append(cfg_path)
+            _save_progress(progress_path, completed, failures)
 
     # Print summary table
     print("\n" + "=" * 70)
@@ -114,7 +158,10 @@ def main():
     print(f"{'Config':<55} {'Status':<8} {'Model':<18} {'AUC':<6} {'n'}")
     print("-" * 70)
     for r in results:
-        status = "OK" if r["success"] else "FAIL"
+        if r.get("skipped"):
+            status = "SKIP"
+        else:
+            status = "OK" if r["success"] else "FAIL"
         model = r.get("model", "—")
         auc = f"{r['auc']:.3f}" if r.get("auc") is not None else "—"
         n = str(r.get("n", "—"))
@@ -124,9 +171,12 @@ def main():
         print("\nFailures:")
         for f in failures:
             print(f"  - {f}")
+        print(f"\nTo resume, run the same command with --resume")
         sys.exit(1)
 
     print("\nAll configs completed successfully.")
+    if progress_path.exists():
+        progress_path.unlink()
 
 
 if __name__ == "__main__":

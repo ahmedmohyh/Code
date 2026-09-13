@@ -329,25 +329,47 @@ class BIRAFFE2Loader:
         n_levels = self._level_count()
         valid_ids = []
 
+        # --- Setup 06 diagnostic counters (no-op, only logging) ---
+        diag = {
+            "real_in_archive": len(self.available_files),
+            "real_in_metadata": 0,
+            "real_with_all_levels": 0,
+            "pseudo_expected": 0,
+            "pseudo_created": 0,
+            "dropped_no_metadata": 0,
+            "dropped_missing_score": 0,
+            "face_files_present": len(self.available_face_files),
+        }
+
         for sid in sorted(self.available_files.keys()):
             row = self.metadata[self.metadata["ID"] == sid]
             if row.empty:
+                diag["dropped_no_metadata"] += 1
                 continue
+            diag["real_in_metadata"] += 1
 
             if level_mode:
+                valid_levels = 0
                 for level in range(n_levels):
                     if self._recompute_flow:
                         target_level = self._raw_geq_level(level)
                         try:
                             score = self._compute_raw_flow_score(sid, target_level)
                         except (ValueError, KeyError):
+                            diag["dropped_missing_score"] += 1
                             continue
                         if pd.isna(score):
+                            diag["dropped_missing_score"] += 1
                             continue
                     else:
                         if level >= len(cols) or pd.isna(row[cols[level]].values[0]):
+                            diag["dropped_missing_score"] += 1
                             continue
                     valid_ids.append(self._real_to_pseudo(sid, level))
+                    valid_levels += 1
+                diag["pseudo_created"] += valid_levels
+                if valid_levels == n_levels:
+                    diag["real_with_all_levels"] += 1
             else:
                 if self._recompute_flow:
                     target_levels = getattr(self.config, "raw_geq_levels", None)
@@ -359,13 +381,16 @@ class BIRAFFE2Loader:
                             except (ValueError, KeyError):
                                 scores.append(np.nan)
                         if pd.isna(scores).all():
+                            diag["dropped_missing_score"] += 1
                             continue
                     elif len(cols) == 1:
                         try:
                             score = self._compute_raw_flow_score(sid, self._level_from_score_column(cols[0]))
                         except (ValueError, KeyError):
+                            diag["dropped_missing_score"] += 1
                             continue
                         if pd.isna(score):
+                            diag["dropped_missing_score"] += 1
                             continue
                     else:
                         scores = []
@@ -375,10 +400,33 @@ class BIRAFFE2Loader:
                             except (ValueError, KeyError):
                                 scores.append(np.nan)
                         if pd.isna(scores).all():
+                            diag["dropped_missing_score"] += 1
                             continue
                 elif pd.isna(row[cols].values[0]).all():
+                    diag["dropped_missing_score"] += 1
                     continue
                 valid_ids.append(sid)
+
+        if level_mode:
+            diag["pseudo_expected"] = diag["real_in_archive"] * n_levels
+            print(
+                f"[loader] real_in_archive={diag['real_in_archive']}, "
+                f"real_in_metadata={diag['real_in_metadata']}, "
+                f"real_with_all_{n_levels}_levels={diag['real_with_all_levels']}, "
+                f"pseudo_expected={diag['pseudo_expected']}, "
+                f"pseudo_created={diag['pseudo_created']}, "
+                f"dropped_no_metadata={diag['dropped_no_metadata']}, "
+                f"dropped_missing_score={diag['dropped_missing_score']}, "
+                f"face_files_present={diag['face_files_present']}"
+            )
+        else:
+            print(
+                f"[loader] real_in_archive={diag['real_in_archive']}, "
+                f"real_in_metadata={diag['real_in_metadata']}, "
+                f"dropped_no_metadata={diag['dropped_no_metadata']}, "
+                f"dropped_missing_score={diag['dropped_missing_score']}, "
+                f"face_files_present={diag['face_files_present']}"
+            )
 
         return valid_ids
 
@@ -471,8 +519,13 @@ class BIRAFFE2Loader:
 
         # Load optional face/affect data if archive is configured.
         face_df = None
-        if self.face_zip_path.exists() and "FACE" in [m.upper() for m in self.config.modalities]:
-            face_df = self._load_face_signal(real_id)
+        face_status = "not_requested"
+        if "FACE" in [m.upper() for m in self.config.modalities]:
+            if self.face_zip_path.exists():
+                face_df = self._load_face_signal(real_id)
+                face_status = "present" if face_df is not None else "missing"
+            else:
+                face_status = "no_archive"
 
         row = self.metadata[self.metadata["ID"] == real_id]
         label = self._get_label(row, level=level)
@@ -481,6 +534,7 @@ class BIRAFFE2Loader:
             "subject_id": subject_id,
             "signal": signal,
             "face": face_df,
+            "face_status": face_status,
             "label": label,
             "sampling_rate": self.sample_rate,
         }
@@ -576,6 +630,13 @@ class BIRAFFE2Loader:
         level_end = start + (level + 1) * (duration / n_levels)
 
         mask = (ts >= level_start) & (ts < level_end)
+        n_samples = int(mask.sum())
+        if n_samples < 60 * self.sample_rate:
+            print(
+                f"[crop {real_id}.{level}] SHORT/EMPTY: game=({start:.3f},{end:.3f}), "
+                f"level=({level_start:.3f},{level_end:.3f}), duration={level_end-level_start:.3f}s, "
+                f"samples={n_samples}"
+            )
         if not mask.any():
             return signal.iloc[0:0].copy()
         return signal.loc[mask].copy()

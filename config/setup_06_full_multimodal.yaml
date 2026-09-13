@@ -32,7 +32,10 @@ label:
 preprocessing:
   cleaning_package: "neurokit2"
   z_standardise: true
-  outlier_strategy: "train_only"
+  # IQR-based outlier removal drops ~78% of training windows when EDA+FACE
+  # features are added (43 features vs 12 in ECG-only), causing 166 empty-test
+  # LOSO folds. Disabled for this multimodal setup.
+  outlier_strategy: "none"
   baseline_correction: "none"
   baseline_length_s: 60
 
@@ -66,7 +69,7 @@ models:
 
 validation:
   strategy: "LOSO"
-  permutation: false
+  permutation: true
   metrics:
     - "accuracy"
     - "f1_macro"

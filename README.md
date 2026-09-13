@@ -26,6 +26,15 @@ python scripts/run_experiment_fast.py --config config/setup_01_biraffe2_ecg_base
 
 # Run all ablation setups that need no new loaders (Setups 02-05, 07, 09)
 python scripts/run_batch_setups.py
+
+# Run permutation importance on all previously executed setups (16 configs, all cores)
+python scripts/run_batch_from_config.py --batch config/batch_permutation_setups.yaml
+
+# If interrupted, resume from the last completed setup
+python scripts/run_batch_from_config.py --batch config/batch_permutation_setups.yaml --resume
+
+# Regenerate ablation + permutation tables
+python scripts/build_ablation_table.py
 ```
 
 ---
@@ -62,7 +71,7 @@ tests/                  # Unit tests
 | 03 | `config/setup_03_without_time_distortion.yaml` | Labels without Time Distortion item |
 | 04 | `config/setup_04_no_zscore.yaml` | No z-standardisation |
 | 05 | `config/setup_05_no_outlier.yaml` | No outlier removal |
-| 06 | `config/setup_06_full_multimodal.yaml` | BIRAFFE2 ECG + EDA + webcam |
+| 06 | `config/setup_06_full_multimodal.yaml` | BIRAFFE2 ECG + EDA + webcam affect |
 | 07 | `config/setup_07_5min_window.yaml` | 5-minute fixed window |
 | 08 | `config/setup_08_irshad_physf.yaml` | Irshad/PhySF ECG + EDA + EEG with baseline correction |
 | 09 | `config/setup_09_heartpy.yaml` | ECG cleaning/features with heartpy |
@@ -96,9 +105,15 @@ Each config changes one or more of the following:
 - **Preprocessing:** cleaning package, z-standardisation, outlier strategy, baseline correction, per-subject normalization
 - **Labelling:** median split, margin band, with/without Time Distortion, raw item recomputation
 - **Models:** classical vs deep-learning classifiers
-- **Validation:** LOSO, per-class metrics, permutation analysis
+- **Validation:** LOSO, per-class metrics, permutation feature importance
 
 Results are written to `results/<experiment_name>/`.
+
+Permutation importance is computed inside LOSO CV (when `permutation: true` in the
+config). For each left-out subject, every feature column is shuffled on the test
+windows and the accuracy drop is recorded. Drops are averaged across folds and also
+grouped by modality: **ECG**, **EDA**, **FACE**. Grouped results are written to
+`results/permutation_importance_by_group.md/.csv` by `scripts/build_ablation_table.py`.
 
 ---
 
@@ -107,6 +122,11 @@ Results are written to `results/<experiment_name>/`.
 - Raw data are **not** committed; only relative paths are stored in configs.
 - Every run is fully determined by its config file.
 - The first implemented setup (`setup_01`) runs end-to-end on BIRAFFE2 ECG data.
+- `n_subjects` in `metrics.json` is the number of pseudo-subjects that entered
+  LOSO. `n_subjects_used` in `subject_aggregate` is the number of folds that
+  survived the single-class training-set check and therefore contributed to the
+  subject-level AUC. These two numbers are not the same when many folds are
+  skipped.
 
 ## Key methodological decisions
 
@@ -280,7 +300,9 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Ran corrected Setups 03 / 11: AUC 0.618 with RandomForest on 260 pseudo-subjects (Time Distortion removal slightly hurts vs. 01c)
 - ✅ Added `scripts/build_ablation_table.py` and generated `results/ablation_comparison.md/csv`
 - ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): RandomForest AUC = **0.691** on 223 pseudo-subjects — new best result
-- ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC = **0.633** on 107 pseudo-subjects — comparable to 01c but fewer valid subjects
+- ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC = **0.633** on 107 valid AUC folds; 273 pseudo-subjects entered LOSO, 166 folds skipped due to single-class training sets
+- ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10)
+- ✅ Created `config/batch_permutation_setups.yaml` to run permutation analysis on all 16 previously executed setups with all CPU cores via `scripts/run_batch_from_config.py`
 
 ### Latest ablation results (subject-level)
 
@@ -298,7 +320,7 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 | 05 no outlier | 0.441 | 0.440 | 0.382 | 102 | Slightly better; uses all subjects |
 | 07 5-minute window | 0.333 | 0.317 | 0.237 | 90 | Fewer windows, worse AUC |
 | 12 baseline correction + levels as subjects | 0.628 | 0.628 | **0.691** | 223 | Best AUC so far; baseline-corrected HRV |
-| 06 multimodal ECG+EDA+FACE | 0.617 | 0.612 | 0.633 | 107 | ECG + EDA + webcam affect; fewer valid pseudo-subjects |
+| 06 multimodal ECG+EDA+FACE | 0.612 | 0.611 | 0.617 | 273 | 273 pseudo-subjects entered LOSO; 0 skipped after disabling IQR outlier removal |
 | 09 heartpy | 0.420 | 0.419 | 0.396 | 100 | Previously best pure-ECG AUC |
 
 **Setup 12 per-model subject-level AUCs (223 baseline-corrected pseudo-subjects):**
@@ -350,11 +372,20 @@ subject-specific resting physiology was indeed masking a within-session flow
 signal. The level-as-subjects design alone improved AUC from ~0.40 to 0.630; adding
 baseline correction raises it further to 0.691.
 
-Adding EDA and webcam affect features (Setup 06) produced AUC **0.633** on only
-107 pseudo-subjects — comparable to Setup 01c (0.630, n=248) but with far fewer
-valid samples. The lower subject count suggests that face-data coverage is
-sparse or misaligned for many level segments, and the multimodal gain over ECG
-alone is modest in this configuration.
+Adding EDA and webcam affect features (Setup 06) initially produced AUC **0.633**
+on 107 pseudo-subjects because 166 of 273 LOSO folds were skipped. A diagnostic
+in `scripts/compare_01c_06_loso.py` revealed that the root cause was the
+`train_only` IQR-based outlier handler: with 43 multimodal features
+(ECG 12 + EDA 6 + FACE 25), it dropped **77.6%** of training windows, and many
+pseudo-subjects with only 4–5 windows ended up with an empty test set. Setup 01c
+has only 12 features and drops 21.9%, so most folds survived.
+
+After changing Setup 06 to `outlier_strategy: none`, the full LOSO run achieved
+subject-level AUC **0.617** on **273** pseudo-subjects (0 skipped folds).
+The slightly lower AUC compared with the 107-fold estimate (0.633) is the more
+reliable result because it uses all pseudo-subjects instead of a biased subset
+that survived aggressive window dropping. A detailed comparison is written to
+`results/setup_06_dropout/compare_01c_06_loso.json`.
 
 The pseudo-subjects still share baseline physiology, so generalisation remains
 closer to "leave-one-level-out" than to true cross-person generalisation.
