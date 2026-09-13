@@ -261,7 +261,7 @@ python scripts/run_experiment_fast.py --config config/setup_01c_biraffe2_ecg_lev
 python scripts/run_batch_from_config.py --batch config/diagnostic_01d_01g_batch.yaml
 ```
 
-Result: RandomForest achieved subject-level AUC **0.630** on 248 valid pseudo-subjects, far above the previous pure-ECG ceiling of ~0.40. Setup 01g originally dropped to **0.501** when per-subject normalization was applied, but a re-run with per-subject normalization off and z-standardisation on recovered to **0.551** (n=460). This confirms that subject-specific baseline physiology is a major driver of the 01c improvement, while adding the 2013 scoring version does not beat the 3-column 01c result.
+Result: RandomForest achieved subject-level AUC **0.628** on 247 valid pseudo-subjects, far above the previous pure-ECG ceiling of ~0.40. Setup 01g originally dropped to **0.501** when per-subject normalization was applied, but a re-run with per-subject normalization off and z-standardisation on recovered to **0.551** (n=460). This confirms that subject-specific baseline physiology is a major driver of the 01c improvement, while adding the 2013 scoring version does not beat the 3-column 01c result.
 
 ### New diagnostic configs (added to cover weak-AUC assumptions)
 
@@ -274,8 +274,8 @@ To diagnose why pure ECG/HRV gives poor Flow prediction, the following configs w
 | 01f | Does a shorter step / more windows help? | 102 | Label = mean of 6 Flow scores (3 levels × 2013 + 2018) |
 | 01g | Level-as-subjects + per-subject normalization | 540 pseudo-subjects | AUC = 0.501; per-subject norm removes the benefit |
 | 01g variant | Level-as-subjects + z-standardise (no per-subject norm) | 460 pseudo-subjects | AUC = 0.551; confirms subject-baseline effect |
-| 11  | Does removing Time Distortion from the Flow score change results? | 260 pseudo-subjects | AUC = 0.618 with RandomForest; LR/XGB lower; Time Distortion removal slightly hurts vs. 01c |
-| 12  | Does baseline correction from the resting segment help? | 223 pseudo-subjects | AUC = **0.691** with RandomForest; best result so far |
+| 11  | Does removing Time Distortion from the Flow score change results? | 260 pseudo-subjects | AUC = 0.625 with RandomForest; LR/XGB lower; Time Distortion removal slightly hurts vs. 01c |
+| 12  | Does baseline correction from the resting segment help? | 223 pseudo-subjects | AUC = **0.676** with SVM; best result so far |
 
 All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-subjects with subject-level AUC = 0.501 when per-subject normalization was applied, and 0.551 when it was disabled (n=460). This indicates that subject-specific physiological baselines are a major information source; removing them largely cancels the Setup 01c improvement. Adding the GEQ 2013 scores on top of 2018 scores does not outperform the 3-column 01c design. Setup 11 now recomputes Flow from raw GEQ items without Time Distortion.
 
@@ -289,20 +289,22 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Parallel fast runner (`run_experiment_fast.py`) using all CPU cores
 - ✅ Subject-level aggregation for valid ROC-AUC with per-subject labels
 - ✅ Averaged 3-level Flow label config created and run
-- 🔄 Stubs ready: EDA/webcam/EEG loaders, Irshad/PhySF loader, deep models, permutation analysis
+- ✅ EDA/webcam loaders implemented and used in Setup 06; EEG / Irshad-PhySF / deep models remain stubs
 - ✅ Ran remaining configs that need no new loaders (Setups 02–05, 07, 09)
 - ✅ Implemented Setup 01c config + loader changes (levels as pseudo-subjects)
 - ✅ Added diagnostic configs 01d, 01e, 01f, 01g, 11, 12 to test weak-AUC assumptions
 - ✅ Updated README with new configs and their purposes
-- ✅ Ran Setup 01c: RandomForest AUC = 0.630 on 248 pseudo-subjects
+- ✅ Ran Setup 01c: RandomForest AUC = 0.628 on 247 pseudo-subjects
 - ✅ Implemented raw-GEQ item recomputation in `BIRAFFE2Loader` (Setup 03 / Setup 11)
 - ✅ Fixed raw GEQ scoring to subtract 1.0 and match BIRAFFE2 pre-computed scale
-- ✅ Ran corrected Setups 03 / 11: AUC 0.618 with RandomForest on 260 pseudo-subjects (Time Distortion removal slightly hurts vs. 01c)
+- ✅ Ran corrected Setups 03 / 11: AUC 0.625 with RandomForest on 260 pseudo-subjects (Time Distortion removal slightly hurts vs. 01c)
 - ✅ Added `scripts/build_ablation_table.py` and generated `results/ablation_comparison.md/csv`
-- ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): RandomForest AUC = **0.691** on 223 pseudo-subjects — new best result
+- ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): SVM AUC = **0.676** on 223 pseudo-subjects — new best result
 - ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC = **0.633** on 107 valid AUC folds; 273 pseudo-subjects entered LOSO, 166 folds skipped due to single-class training sets
+- ✅ Fixed Setup 06 fold-skip root cause (`train_only` IQR outlier removal) and re-ran: RandomForest AUC = **0.617** on all 273 pseudo-subjects (0 skipped)
 - ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10)
-- ✅ Created `config/batch_permutation_setups.yaml` to run permutation analysis on all 16 previously executed setups with all CPU cores via `scripts/run_batch_from_config.py`
+- ✅ Ran full permutation batch on all 16 previously executed setups (`config/batch_permutation_setups.yaml`, all CPU cores)
+- ✅ Generated `results/permutation_importance.md/.csv` and `results/permutation_importance_by_group.md/.csv`
 
 ### Latest ablation results (subject-level)
 
@@ -310,16 +312,15 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 |-------|----------|----|-----|---|-------|
 | 01 single-level | 0.394 | 0.376 | 0.336 | 99 | Baseline |
 | 01b avg-levels | 0.434 | 0.434 | 0.362 | 99 | Averaged 3-level label |
-| 01c level-as-subjects | 0.593 | 0.593 | 0.630 | 248 | Previously best; time-varying labels help |
-| 01g level-as-subjects + per-subject norm | 0.552 | 0.528 | 0.501 | 540 | Original 01g: per-subject norm removes the 01c benefit |
-| 01g variant (z-score, no per-subj norm) | 0.546 | 0.545 | 0.551 | 460 | Recovers AUC; subject baselines matter |
-| 02 margin 0.1 | 0.478 | 0.452 | 0.358 | 92 | Excludes 8 near-median subjects |
-| 03 no time dist. | 0.573 | 0.571 | **0.618** | 260 | 3 pseudo-subjects, raw items without item 25 |
-| 11 raw GEQ no time dist. | 0.573 | 0.571 | **0.618** | 260 | Same as 03 with RF/LR/XGB; RF best |
-| 04 no z-score | 0.394 | 0.380 | 0.336 | 99 | Worse than with z-score |
-| 05 no outlier | 0.441 | 0.440 | 0.382 | 102 | Slightly better; uses all subjects |
-| 07 5-minute window | 0.333 | 0.317 | 0.237 | 90 | Fewer windows, worse AUC |
-| 12 baseline correction + levels as subjects | 0.628 | 0.628 | **0.691** | 223 | Best AUC so far; baseline-corrected HRV |
+| 01c level-as-subjects | 0.599 | 0.599 | 0.628 | 247 | Previously best; time-varying labels help |
+| 01g level-as-subjects + per-subject norm | 0.549 | 0.548 | 0.570 | 452 | Six score columns + per-subject norm; still below 01c |
+| 02 margin 0.1 | 0.446 | 0.415 | 0.384 | 92 | Excludes 8 near-median subjects |
+| 03 no time dist. | 0.600 | 0.598 | **0.625** | 260 | 3 pseudo-subjects, raw items without item 25 |
+| 11 raw GEQ no time dist. | 0.600 | 0.598 | **0.625** | 260 | Same as 03 with RF/LR/XGB; RF best |
+| 04 no z-score | 0.394 | 0.383 | 0.357 | 99 | Worse than with z-score |
+| 05 no outlier | 0.451 | 0.446 | 0.399 | 102 | Slightly better; uses all subjects |
+| 07 5-minute window | 0.344 | 0.330 | 0.240 | 90 | Fewer windows, worse AUC |
+| 12 baseline correction + levels as subjects | 0.638 | 0.637 | **0.676** | 223 | Best AUC so far; baseline-corrected HRV (SVM best) |
 | 06 multimodal ECG+EDA+FACE | 0.612 | 0.611 | 0.617 | 273 | 273 pseudo-subjects entered LOSO; 0 skipped after disabling IQR outlier removal |
 | 09 heartpy | 0.420 | 0.419 | 0.396 | 100 | Previously best pure-ECG AUC |
 
@@ -327,11 +328,11 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 
 | Model | AUC | Notes |
 |-------|-----|-------|
-| RandomForest | **0.691** | Best overall so far |
-| SVM | 0.672 | Strong second |
-| XGBoost | 0.670 | |
-| LogisticRegression | 0.663 | |
-| kNN | 0.607 | |
+| SVM | **0.676** | Best overall so far |
+| kNN | 0.676 | Tied with SVM |
+| RandomForest | 0.673 | Strong third |
+| XGBoost | 0.666 | |
+| LogisticRegression | 0.664 | |
 
 **Setup 12 — baseline correction + levels as pseudo-subjects.** Setup 12 applies
 subject-level baseline correction using the resting `BASELINE START` / `BASELINE END`
@@ -339,8 +340,8 @@ segment from the BIRAFFE2 procedure files. Each window feature is transformed by
 `change_score`: `window_feature − baseline_feature`. The config uses three GEQ-R
 2018 Flow columns (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`, `GEQ-3-FLOW-2018`) with
 `treat_levels_as_subjects: true`, producing 223 valid pseudo-subjects. After
-correction, RandomForest reaches AUC **0.691**, beating the previous best of
-0.630. This is the strongest evidence so far that subject-specific resting
+correction, SVM reaches AUC **0.676**, beating the previous best of
+0.628. This is the strongest evidence so far that subject-specific resting
 physiology was masking a real flow signal, and that removing it improves
 cross-subject generalisation.
 
@@ -354,10 +355,10 @@ from the single-label-per-subject effect, both configs were updated to use
 `treat_levels_as_subjects: true` with `raw_geq_levels: [1, 2, 3]`, creating up to
 306 pseudo-subjects.
 
-After rerun, both setups achieved subject-level AUC **0.618** on 260 pseudo-subjects
-(RandomForest) with accuracy 0.573 and F1 0.571. Setup 11 per-model AUCs:
-RandomForest 0.618, LogisticRegression 0.579, XGBoost 0.543. This is a strong
-result but slightly below Setup 01c (0.630). Removing the Time Distortion item
+After rerun, both setups achieved subject-level AUC **0.625** on 260 pseudo-subjects
+(RandomForest) with accuracy 0.600 and F1 0.598. Setup 11 per-model AUCs:
+RandomForest 0.625, LogisticRegression 0.578, XGBoost 0.552. This is a strong
+result but slightly below Setup 01c (0.628). Removing the Time Distortion item
 therefore appears to make physiological prediction marginally harder, supporting
 the hypothesis that Time Distortion contributes useful signal for this ECG-based
 classifier.
@@ -367,10 +368,10 @@ A full comparison table across all runnable setups is automatically generated by
 and `results/ablation_comparison.csv`.
 
 Takeaway: combining baseline correction with the level-as-subjects design pushes AUC
-to **0.691** with RandomForest, the best result so far. This suggests that
+to **0.676** with SVM, the best result so far. This suggests that
 subject-specific resting physiology was indeed masking a within-session flow
-signal. The level-as-subjects design alone improved AUC from ~0.40 to 0.630; adding
-baseline correction raises it further to 0.691.
+signal. The level-as-subjects design alone improved AUC from ~0.40 to 0.628; adding
+baseline correction raises it further to 0.676.
 
 Adding EDA and webcam affect features (Setup 06) initially produced AUC **0.633**
 on 107 pseudo-subjects because 166 of 273 LOSO folds were skipped. A diagnostic

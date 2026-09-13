@@ -98,8 +98,8 @@ flow_lol/
   - Reads GAME START/END timestamps from `BIRAFFE2-procedure.zip`.
   - Splits the GAME phase into N equal segments (N = number of score columns) and labels each with the matching score column.
   - Produces up to 306 pseudo-subjects for three columns or up to 612 for six columns.
-  - **Ran and achieved subject-level AUC = 0.630 with RandomForest (n=248 pseudo-subjects).**
-  - Other models: XGBoost 0.605, kNN 0.576, LogisticRegression 0.558, SVM 0.537.
+  - **Ran and achieved subject-level AUC = 0.628 with RandomForest (n=247 pseudo-subjects).**
+  - Other models: XGBoost 0.621, kNN 0.605, LogisticRegression 0.572, SVM 0.585.
 - ✅ Added diagnostic configs 01d, 01e, 01f, 01g, 11, 12 to test weak-AUC assumptions.
 - ✅ Fixed `BIRAFFE2Loader` so `treat_levels_as_subjects` works with six score columns (Setup 01g).
 - ✅ Ran Setup 01g original (level-as-subjects + per-subject normalization, six score columns):
@@ -110,19 +110,20 @@ flow_lol/
 - ✅ Re-ran Setup 01g with `per_subject_normalize=false` and `z_standardise=true`:
   - Window-level: Accuracy=0.532, F1=0.473, AUC=nan
   - Subject-level: Accuracy=0.546, F1=0.545, **AUC=0.551**, n=460 pseudo-subjects.
-  - Confirms that removing per-subject normalization recovers much of the AUC, but adding 2013 columns does not beat the 3-column 01c result (AUC 0.630).
+  - Confirms that removing per-subject normalization recovers much of the AUC, but adding 2013 columns does not beat the 3-column 01c result (AUC 0.628).
 - ✅ Created `scripts/build_ablation_table.py` and regenerated `results/ablation_comparison.md` / `.csv` with all runnable setups.
 - ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]`, creating up to 306 pseudo-subjects with Time-Distortion-free labels.
-  - RandomForest subject-level AUC = **0.618**, accuracy = 0.573, F1 = 0.571, n = 260 pseudo-subjects.
-  - Setup 11 per-model AUCs: RandomForest 0.618, LogisticRegression 0.579, XGBoost 0.543.
-  - This is slightly below Setup 01c (0.630), suggesting removing item 25 (Time Distortion) makes prediction marginally harder.
-- ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): RandomForest AUC=0.691, n=223 — new best result.
+  - RandomForest subject-level AUC = **0.625**, accuracy = 0.600, F1 = 0.598, n = 260 pseudo-subjects.
+  - Setup 11 per-model AUCs: RandomForest 0.625, LogisticRegression 0.578, XGBoost 0.552.
+  - This is slightly below Setup 01c (0.628), suggesting removing item 25 (Time Distortion) makes prediction marginally harder.
+- ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): SVM AUC=0.676, n=223 — new best result.
 - ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC=0.633, n=107 valid AUC folds; 273 pseudo-subjects entered LOSO and 166 folds were skipped.
 - ✅ Diagnosed Setup 06 fold-skip root cause: `train_only` IQR outlier removal drops 77.6% of training windows with 43 multimodal features, emptying test sets for short-segment pseudo-subjects.
 - ✅ Fixed Setup 06 config: changed `outlier_strategy` from `train_only` to `none`.
 - ✅ Re-ran Setup 06: RandomForest AUC=**0.617**, n=**273** valid AUC folds (0 skipped); the lower AUC is the honest estimate over all pseudo-subjects.
 - ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10). Per-feature and per-feature-group (ECG/EDA/FACE) drops are stored in `metrics.json` and aggregated across folds.
 - ✅ Created `config/batch_permutation_setups.yaml` to run permutation analysis on all 16 previously executed setups with all CPU cores via `scripts/run_batch_from_config.py`.
+- ✅ Completed the full permutation batch (16/16 configs, 0 failures) and regenerated `results/ablation_comparison.md/.csv`, `results/permutation_importance.md/.csv`, and `results/permutation_importance_by_group.md/.csv`.
 
 ## Unified To-Do List — Cover All Supervisor Comments + Missing Setups
 
@@ -132,16 +133,16 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 | # | Task | Supervisor comment | Status | What exactly needs to be done |
 |---|------|--------------------|--------|------------------------------|
-| 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Reran with `raw_geq_levels: [1,2,3]`: RF AUC=0.618, n=260; LR=0.579, XGB=0.543 |
-| 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ✅ Done | Ran with 3 levels as pseudo-subjects + 5 classifiers; RandomForest AUC=0.691, n=223 |
-| 3 | Setup 06 — multimodal ECG + EDA + webcam affect | 12 | ✅ Fixed | Config updated to `outlier_strategy: none`; rerun AUC=0.617, n=273; full batch below |
+| 1 | Proper Setup 03 / Setup 11 — recompute Flow from raw GEQ items excluding item 25 (Time Distortion) | 3 | ✅ Done | Reran with `raw_geq_levels: [1,2,3]`: RF AUC=0.625, n=260; LR=0.578, XGB=0.552 |
+| 2 | Setup 12 — BIRAFFE2 baseline correction from procedure-file resting segment | 5 | ✅ Done | Ran with 3 levels as pseudo-subjects + 5 classifiers; SVM AUC=0.676, n=223 |
+| 3 | Setup 06 — multimodal ECG + EDA + webcam affect | 12 | ✅ Fixed | Config updated to `outlier_strategy: none`; rerun AUC=0.617, n=273; permutation batch complete |
 | 4 | Setup 08 — Irshad/PhySF loader with EEG | 9 | 🔄 Config only | Confirm dataset format/path, implement loader with ECG + EDA + EEG + baseline correction, run it |
 
 ### Medium priority — methodological completeness
 
 | # | Task | Supervisor comment | Status | What exactly needs to be done |
 |---|------|--------------------|--------|------------------------------|
-| 5 | Wire permutation analysis into runner | 10 | ✅ Done | `compute_permutation_importance()` runs inside LOSO CV when `permutation: true`; per-feature and per-group drops stored in `metrics.json`; batch YAML created |
+| 5 | Wire permutation analysis into runner | 10 | ✅ Done | `compute_permutation_importance()` runs inside LOSO CV when `permutation: true`; per-feature and per-group drops stored in `metrics.json`; full batch completed and tables generated |
 | 6 | Biosppy ECG cleaning/features config | 7 | ❌ Not done | Wire biosppy path in `ecg_cleaner.py` and feature extractor, create and run a biosppy config |
 | 7 | Finish Setup 10 — wire deep learning models (MLP/LSTM/CNN1D) into runner | 0 | 🔄 Config only | Integrate models from `flow_lol/models/deep.py` into `run_experiment_fast.py`, handle sequences vs flat features |
 
@@ -162,7 +163,7 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 4. ✅ Ran `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` and compared with single-level Setup 01.
 5. ✅ Ran Setup 02 / 04 / 05 / 07 / 09 configs that require no new loaders. Subject-level AUCs: 02=0.358, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Best pure-ECG result is heartpy (Setup 09).
 6. ✅ Implemented and ran corrected Setups 03 / 11 (level-1-only): recompute Flow score from raw GEQ items excluding item 25, with fixed `mean(items) - 1` scoring. Setup 03 RF AUC=0.298; Setup 11 best LR AUC=0.299, RF=0.298, XGB=0.268 (n=99).
-7. ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]` (up to 306 pseudo-subjects). Final subject-level AUC=0.618 with RandomForest (n=260), LR=0.579, XGB=0.543.
+7. ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]` (up to 306 pseudo-subjects). Final subject-level AUC=0.625 with RandomForest (n=260), LR=0.578, XGB=0.552.
 
 ### Short-term (complete the 10 setups)
 4. ✅ Implement BIRAFFE2 webcam loader (`flow_lol/data/loaders/biraffe2_face_loader.py`).
@@ -183,18 +184,14 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 ## How to proceed
 
-Setup 12 produced the best result so far (AUC = 0.691). Setup 06 had a LOSO
-fold-skip problem: 166 of 273 folds were skipped because `train_only` IQR
+Setup 12 produced the best result so far (AUC = 0.676 with SVM). Setup 06 had a
+LOSO fold-skip problem: 166 of 273 folds were skipped because `train_only` IQR
 outlier removal drops 77.6% of training windows with 43 multimodal features.
 After fixing the config to `outlier_strategy: none`, Setup 06 re-ran with
-AUC = 0.617 on all 273 pseudo-subjects. The next recommended steps are now:
+AUC = 0.617 on all 273 pseudo-subjects. The full permutation batch (16/16 configs)
+and table regeneration are now complete. The next recommended steps are:
 
-1. **Run the full permutation batch (includes fixed Setup 06):**
-   ```bash
-   python scripts/run_batch_from_config.py --batch config/batch_permutation_setups.yaml
-   ```
-   If interrupted, resume with the same command plus `--resume`.
-2. **Regenerate tables:** `python scripts/build_ablation_table.py`.
-3. **Biosppy path:** add the missing cross-package comparison (comment #7).
-4. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
-5. **Visualisations:** confusion matrices, feature importance plots, learning curves.
+1. **Biosppy path:** add the missing cross-package comparison (comment #7).
+2. **Deep models / Setup 10:** integrate MLP/LSTM/CNN and compare with classical models.
+3. **Visualisations:** confusion matrices, feature importance plots, learning curves.
+4. **Document baseline-length limitations** for HRV/EEG in the methodology docs.
