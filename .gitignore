@@ -10,11 +10,15 @@ cache/
 # Models and outputs (only at repository root)
 /models/
 checkpoints/
-results/
+results/*
 *.pkl
 *.pt
 *.pth
 *.joblib
+
+# Keep generated markdown result tables in version control
+!results/*.md
+!results/**/*.md
 
 # Logs
 logs/
