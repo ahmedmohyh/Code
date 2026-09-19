@@ -28,7 +28,7 @@ def load_metrics(path):
         return None
 
 
-def extract_best_model(metrics):
+def extract_best_model(metrics, default_name="unknown"):
     models = metrics.get("models", {})
     best = None
     best_auc = -1.0
@@ -43,7 +43,7 @@ def extract_best_model(metrics):
         if auc > best_auc:
             best_auc = auc
             best = {
-                "experiment": metrics.get("experiment", "unknown"),
+                "experiment": metrics.get("experiment_name", default_name),
                 "best_model": model_name,
                 "accuracy": sub.get("accuracy"),
                 "f1_macro": sub.get("f1_macro"),
@@ -62,7 +62,7 @@ def build_table():
         metrics = load_metrics(metrics_file)
         if metrics is None:
             continue
-        row = extract_best_model(metrics)
+        row = extract_best_model(metrics, default_name=experiment)
         if row:
             rows.append(row)
     return rows

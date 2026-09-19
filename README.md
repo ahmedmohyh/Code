@@ -19,22 +19,29 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Run the baseline setup (fast parallel runner)
-python scripts/run_experiment_fast.py --config config/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/normal_configs/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
 
 # Run the averaged-levels baseline
-python scripts/run_experiment_fast.py --config config/setup_01_biraffe2_ecg_baseline_avg_levels.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml --n-jobs -1
 
 # Run all ablation setups that need no new loaders (Setups 02-05, 07, 09)
 python scripts/run_batch_setups.py
 
 # Run permutation importance on all previously executed setups (16 configs, all cores)
-python scripts/run_batch_from_config.py --batch config/batch_permutation_setups.yaml
+python scripts/run_batch_from_config.py --batch config/normal_configs/batch_permutation_setups.yaml
 
 # If interrupted, resume from the last completed setup
-python scripts/run_batch_from_config.py --batch config/batch_permutation_setups.yaml --resume
+python scripts/run_batch_from_config.py --batch config/normal_configs/batch_permutation_setups.yaml --resume
 
-# Regenerate ablation + permutation tables
+# Run all previously executed setups with real per-level timestamps from game logs
+python scripts/run_batch_from_config.py --batch config/real_level_configs/batch_real_level_times_setups.yaml --n-jobs -1
+
+# Regenerate ablation tables
 python scripts/build_ablation_table.py
+python scripts/build_ablation_table_real_level_times.py
+
+# Regenerate class-balance table (per label column)
+python scripts/build_class_balance_table.py
 ```
 
 ---
@@ -42,7 +49,9 @@ python scripts/build_ablation_table.py
 ## Repository structure
 
 ```text
-config/                 # YAML configs, one per ablation setup
+config/                 # YAML configs, organised in subfolders
+├── normal_configs/     # Original ablation setups
+└── real_level_configs/ # Mirror configs using real per-level timestamps
 flow_lol/               # Main package
 ├── data/               # Loaders and labelers
 ├── preprocessing/      # Signal cleaning, normalisation, outlier handling, baseline correction
@@ -65,8 +74,9 @@ tests/                  # Unit tests
 | Setup | File | Purpose |
 |-------|------|---------|
 | 01 | `config/setup_01_biraffe2_ecg_baseline.yaml` | BIRAFFE2 ECG-only baseline |
-| 01b | `config/setup_01_biraffe2_ecg_baseline_avg_levels.yaml` | Baseline with averaged 3-level Flow label |
-| 01c | `config/setup_01c_biraffe2_ecg_levels_as_subjects.yaml` | Treat each GEQ level as a separate pseudo-subject |
+| 01b | `config/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml` | Baseline with averaged 3-level Flow label |
+| 01c | `config/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml` | Treat each GEQ level as a separate pseudo-subject |
+| 01d | `config/normal_configs/setup_01d_biraffe2_ecg_levels_as_subjects_real_level_times.yaml` | Same as 01c but uses real level timestamps from game logs |
 | 02 | `config/setup_02_label_margin_01.yaml` | Median split with margin band 0.1 |
 | 03 | `config/setup_03_without_time_distortion.yaml` | Labels without Time Distortion item |
 | 04 | `config/setup_04_no_zscore.yaml` | No z-standardisation |
@@ -88,7 +98,7 @@ Both Setup 03 and Setup 11 read the raw GEQ item CSVs (`BIRAFFE2-metadata-RAW-GE
 Run any setup with:
 
 ```bash
-python scripts/run_experiment.py --config config/setup_01_biraffe2_ecg_baseline.yaml
+python scripts/run_experiment.py --config config/normal_configs/setup_01_biraffe2_ecg_baseline.yaml
 ```
 
 ---
@@ -237,6 +247,14 @@ column:
 > time and happened in order inside the GAME phase. The biosignal assigned to
 > pseudo-subject level 1 is the first third of the GAME phase, not the exact
 > physiological segment of level 1.
+>
+> **Update:** the loader now supports reading real per-level timestamps from the
+> game-log archive (`BIRAFFE2-games.zip`). Each `SUB<id>-Level<xx>_Log.json` file
+> provides first/last event timestamps, which are converted to seconds and used
+> to crop biosignal/face segments to the exact level duration. Missing trailing
+> levels (e.g. empty Level-3 logs) are back-filled from the last known level end
+> to `GAME END`. Set configs that use this feature set `games_zip_path` and have
+> the `_real_level_times` suffix in `config/real_level_configs/`.
 
 This turns up to 102 real subjects into up to 306 pseudo-subjects (01c) or up to
 612 pseudo-subjects (01g). LOSO CV leaves one pseudo-subject out at a time.
@@ -255,10 +273,13 @@ Additional caveats:
 Run it with:
 
 ```bash
-python scripts/run_experiment_fast.py --config config/setup_01c_biraffe2_ecg_levels_as_subjects.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml --n-jobs -1
 
 # Or run a batch of configs defined in a YAML file
-python scripts/run_batch_from_config.py --batch config/diagnostic_01d_01g_batch.yaml
+python scripts/run_batch_from_config.py --batch config/normal_configs/diagnostic_01d_01g_batch.yaml
+
+# Re-run with real per-level timestamps from game logs
+python scripts/run_experiment_fast.py --config config/real_level_configs/setup_01c_biraffe2_ecg_levels_as_subjects_real_level_times.yaml --n-jobs -1
 ```
 
 Result: RandomForest achieved subject-level AUC **0.628** on 247 valid pseudo-subjects, far above the previous pure-ECG ceiling of ~0.40. Setup 01g originally dropped to **0.501** when per-subject normalization was applied, but a re-run with per-subject normalization off and z-standardisation on recovered to **0.551** (n=460). This confirms that subject-specific baseline physiology is a major driver of the 01c improvement, while adding the 2013 scoring version does not beat the 3-column 01c result.
@@ -303,8 +324,14 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC = **0.633** on 107 valid AUC folds; 273 pseudo-subjects entered LOSO, 166 folds skipped due to single-class training sets
 - ✅ Fixed Setup 06 fold-skip root cause (`train_only` IQR outlier removal) and re-ran: RandomForest AUC = **0.617** on all 273 pseudo-subjects (0 skipped)
 - ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10)
-- ✅ Ran full permutation batch on all 16 previously executed setups (`config/batch_permutation_setups.yaml`, all CPU cores)
+- ✅ Ran full permutation batch on all 16 previously executed setups (`config/normal_configs/batch_permutation_setups.yaml`, all CPU cores)
 - ✅ Generated `results/permutation_importance.md/.csv` and `results/permutation_importance_by_group.md/.csv`
+- ✅ Implemented real per-level timestamp loading from `BIRAFFE2-games.zip`
+- ✅ Created `config/real_level_configs/` mirror configs that re-run all previous setups with real level boundaries
+- ✅ Ran the real-level-timestamp batch on all 16 mirror configs
+- ✅ Generated `results/ablation_comparison_real_level_times.md/.csv`
+- ✅ Created `scripts/build_class_balance_table.py` and `results/class_balance.md/.csv` reporting balance per label column
+- ✅ Repaired corrupted `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` (and its real-level mirror)
 
 ### Latest ablation results (subject-level)
 
@@ -372,6 +399,40 @@ to **0.676** with SVM, the best result so far. This suggests that
 subject-specific resting physiology was indeed masking a within-session flow
 signal. The level-as-subjects design alone improved AUC from ~0.40 to 0.628; adding
 baseline correction raises it further to 0.676.
+
+### Effect of real per-level timestamps
+
+All pseudo-subject setups were re-run with exact level boundaries from the game
+logs (`config/real_level_configs/batch_real_level_times_setups.yaml`). The main
+finding is that real timestamps change the **window-level class balance**, because
+levels have different durations:
+
+| Label strategy | Equal split | Real timestamps |
+|---|---|---|
+| Pseudo-subjects (3 GEQ-2018 levels) | 45.9% low / 54.1% high | 36.7% low / 63.3% high |
+| Raw GEQ without time distortion | 44.8% low / 55.2% high | 33.2% low / 66.8% high |
+| Multimodal pseudo-subjects | 45.0% low / 55.0% high | 33.7% low / 66.3% high |
+| Pseudo-subjects + baseline correction | 50.7% / 49.3% balanced | 41.2% / 58.8% high majority |
+
+Subject-level AUCs mostly dropped with real timestamps, partly because the
+class distribution became more imbalanced:
+
+| Setup | Equal split AUC | Real timestamps AUC | Change |
+|---|---|---|---|
+| 01c | 0.628 | 0.558 | −0.070 |
+| 03/11 | 0.625 | 0.555 / 0.576 | −0.049 |
+| 12 | 0.676 | 0.664 | −0.012 |
+| 06 | 0.617 | 0.622 | +0.005 |
+
+Setup 06 improved marginally, but the overall pattern shows that simply aligning
+biosignals to real level boundaries is not enough when the resulting windows are
+unevenly distributed across classes. The next step is to address this imbalance,
+e.g. by weighting levels equally, resampling, or using a fixed number of windows
+per level.
+
+Class balance is reported per label column in `results/class_balance.md` and
+`results/class_balance.csv`, because balance is a property of each binary label
+column, not of the dataset or the setup as a whole.
 
 Adding EDA and webcam affect features (Setup 06) initially produced AUC **0.633**
 on 107 pseudo-subjects because 166 of 273 LOSO folds were skipped. A diagnostic
