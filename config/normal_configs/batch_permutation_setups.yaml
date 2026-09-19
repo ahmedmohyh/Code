@@ -1,0 +1,27 @@
+# YAML batch definition for running all previously executed setups with
+# permutation importance enabled. Each config listed here already has
+# validation.permutation: true (enable with scripts/enable_permutation.py).
+#
+# Run with:
+#   python scripts/run_batch_from_config.py --batch config/normal_configs/batch_permutation_setups.yaml
+
+batch_name: "permutation_all_ran_setups"
+n_jobs: -1  # use all CPU cores for feature extraction per setup
+
+configs:
+  - "config/normal_configs/normal_configs/setup_01_biraffe2_ecg_baseline.yaml"
+  - "config/normal_configs/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml"
+  - "config/normal_configs/normal_configs/setup_02_label_margin_01.yaml"
+  - "config/normal_configs/normal_configs/setup_04_no_zscore.yaml"
+  - "config/normal_configs/normal_configs/setup_05_no_outlier.yaml"
+  - "config/normal_configs/normal_configs/setup_07_5min_window.yaml"
+  - "config/normal_configs/normal_configs/setup_09_heartpy.yaml"
+  - "config/normal_configs/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml"
+  - "config/normal_configs/normal_configs/setup_01d_drop_unreliable_60s_features.yaml"
+  - "config/normal_configs/normal_configs/setup_01e_per_subject_normalization.yaml"
+  - "config/normal_configs/normal_configs/setup_01f_shorter_step.yaml"
+  - "config/normal_configs/normal_configs/setup_01g_levels_as_subjects_per_subject_norm.yaml"
+  - "config/normal_configs/normal_configs/setup_03_without_time_distortion.yaml"
+  - "config/normal_configs/normal_configs/setup_11_raw_geq_without_time_distortion.yaml"
+  - "config/normal_configs/normal_configs/setup_12_biraffe2_baseline_correction.yaml"
+  - "config/normal_configs/normal_configs/setup_06_full_multimodal.yaml"

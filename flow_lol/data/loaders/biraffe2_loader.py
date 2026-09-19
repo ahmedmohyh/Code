@@ -1,4 +1,5 @@
 """BIRAFFE2 biosignal and metadata loader."""
+import json
 import os
 import re
 import zipfile
@@ -41,6 +42,7 @@ class BIRAFFE2Loader:
         self.zip_path = Path(config.path)
         self.metadata_path = Path(config.metadata_path)
         self.face_zip_path = Path(getattr(self.config, "face_zip_path", "") or "")
+        self.games_zip_path = Path(getattr(self.config, "games_zip_path", "") or "")
         self.sample_rate = 1000.0
         self.available_files: Dict[int, str] = {}
         self.available_face_files: Dict[int, str] = {}
@@ -50,6 +52,8 @@ class BIRAFFE2Loader:
         self._game_times: Dict[int, Optional[Tuple[float, float]]] = {}
         # Maps real subject ID -> (baseline_start, baseline_end) when procedure files are available.
         self._baseline_times: Dict[int, Optional[Tuple[float, float]]] = {}
+        # Maps real subject ID -> list of (level_start, level_end) timestamps when game logs are available.
+        self._level_times: Dict[int, List[Tuple[float, float]]] = {}
         self._raw_geq: Dict[int, pd.DataFrame] = {}
         self._recompute_flow = getattr(self.config, "recompute_flow_from_items", False)
         self._exclude_td = getattr(self.config, "exclude_time_distortion", False)
@@ -67,6 +71,9 @@ class BIRAFFE2Loader:
         # Scan optional webcam/affect archive if a path is configured.
         if str(self.face_zip_path) not in (".", "") and self.face_zip_path.suffix.lower() == ".zip" and self.face_zip_path.exists():
             self._scan_face_archive()
+        # Scan optional game-logs archive; real level timestamps improve pseudo-subject cropping.
+        if str(self.games_zip_path) not in (".", "") and self.games_zip_path.suffix.lower() == ".zip" and self.games_zip_path.exists():
+            self._load_game_level_times()
 
     # ------------------------------------------------------------------
     # Archive / metadata scanning
@@ -208,6 +215,77 @@ class BIRAFFE2Loader:
     def get_baseline_times(self, real_id: int) -> Optional[Tuple[float, float]]:
         """Return (baseline_start, baseline_end) timestamps for a real subject, if known."""
         return self._baseline_times.get(real_id)
+
+    def get_level_times(self, real_id: int) -> Optional[List[Tuple[float, float]]]:
+        """Return real level start/end timestamps from game logs, if available."""
+        return self._level_times.get(real_id)
+
+    # ------------------------------------------------------------------
+    # Game-log handling (real level timestamps)
+    # ------------------------------------------------------------------
+    def _load_game_level_times(self) -> None:
+        """Scan the BIRAFFE2 game-logs archive and cache real level start/end times.
+
+        Each subject has up to three LevelXX_Log.json files. The first and last
+        'timestamp' entries are converted from milliseconds to seconds to match the
+        biosignal TIMESTAMP column.
+        """
+        if not self.games_zip_path.exists():
+            return
+        pattern = re.compile(r"SUB(\d+)-Level(\d+)_Log\.json", re.IGNORECASE)
+        try:
+            with zipfile.ZipFile(self.games_zip_path, "r") as zf:
+                for name in zf.namelist():
+                    m = pattern.search(name)
+                    if not m:
+                        continue
+                    sid = int(m.group(1))
+                    lvl = int(m.group(2)) - 1  # zero-based level index
+                    try:
+                        with zf.open(name) as f:
+                            data = json.load(f)
+                    except Exception:
+                        continue
+                    if not isinstance(data, list) or len(data) == 0:
+                        continue
+                    timestamps = [d["timestamp"] for d in data if "timestamp" in d]
+                    if not timestamps:
+                        continue
+                    start_s = float(min(timestamps)) / 1000.0
+                    end_s = float(max(timestamps)) / 1000.0
+                    if sid not in self._level_times:
+                        self._level_times[sid] = []
+                    # Extend list to required length, filling missing levels with None
+                    while len(self._level_times[sid]) <= lvl:
+                        self._level_times[sid].append(None)
+                    self._level_times[sid][lvl] = (start_s, end_s)
+            # Back-fill missing trailing levels using the procedure GAME END.
+            # Some subjects have empty/missing Level3 logs. We know the real end
+            # of Level2 from its log, so Level3 can be defined as Level2-end ->
+            # GAME-end. This keeps every pseudo-subject aligned to real time.
+            for sid, times in self._level_times.items():
+                game_end = None
+                gt = self._game_times.get(sid)
+                if gt is not None:
+                    game_end = gt[1]
+                # Ensure the list has exactly the number of expected levels
+                expected_levels = self._level_count()
+                while len(times) < expected_levels:
+                    times.append(None)
+                # Find last non-None level end and extend to GAME end if available
+                last_end = None
+                for t in reversed(times):
+                    if t is not None:
+                        last_end = t[1]
+                        break
+                if last_end is not None and game_end is not None and last_end < game_end:
+                    for idx in range(len(times)):
+                        if times[idx] is None:
+                            prev_end = last_end if idx == 0 or times[idx - 1] is None else times[idx - 1][1]
+                            times[idx] = (prev_end, game_end)
+                            last_end = game_end
+        except Exception as e:
+            print(f"[warn] Could not load game level times from {self.games_zip_path}: {e}")
 
     @staticmethod
     def _find_event_time(df: pd.DataFrame, event_names: List[str]) -> Optional[float]:
@@ -601,41 +679,47 @@ class BIRAFFE2Loader:
 
         Strategy
         --------
-        1. Look up GAME START / GAME END from the procedure file.
-        2. Split GAME START -> GAME END into N equal-duration chunks, where N is
+        1. Prefer real level timestamps from game logs (BIRAFFE2-games.zip).
+        2. Otherwise look up GAME START / GAME END from the procedure file and
+           split GAME START -> GAME END into N equal-duration chunks, where N is
            the number of score columns (levels).
-        3. Return the chunk for ``level``.
-
-        If no procedure times are available, fall back to splitting the whole
-        available recording into N equal parts.
+        3. If no procedure times are available, fall back to splitting the whole
+           available recording into N equal parts.
         """
         ts = signal["TIMESTAMP"].to_numpy(dtype=float)
         t_min, t_max = float(ts.min()), float(ts.max())
 
-        game_times = self._game_times.get(real_id)
-        if game_times is not None:
-            start, end = game_times
-            # Clip to actual recorded range
-            start = max(start, t_min)
-            end = min(end, t_max)
+        level_times = self._level_times.get(real_id)
+        if level_times is not None and level < len(level_times) and level_times[level] is not None:
+            start, end = level_times[level]
+            source = "game_log"
         else:
-            start, end = t_min, t_max
+            game_times = self._game_times.get(real_id)
+            if game_times is not None:
+                start, end = game_times
+                source = "procedure"
+            else:
+                start, end = t_min, t_max
+                source = "full_recording"
+            n_levels = self._level_count()
+            duration = end - start
+            level_start = start + level * (duration / n_levels)
+            level_end = start + (level + 1) * (duration / n_levels)
+            start, end = level_start, level_end
+
+        # Clip to actual recorded range
+        start = max(start, t_min)
+        end = min(end, t_max)
 
         if end <= start:
             return signal.iloc[0:0].copy()
 
-        n_levels = self._level_count()
-        duration = end - start
-        level_start = start + level * (duration / n_levels)
-        level_end = start + (level + 1) * (duration / n_levels)
-
-        mask = (ts >= level_start) & (ts < level_end)
+        mask = (ts >= start) & (ts < end)
         n_samples = int(mask.sum())
         if n_samples < 60 * self.sample_rate:
             print(
-                f"[crop {real_id}.{level}] SHORT/EMPTY: game=({start:.3f},{end:.3f}), "
-                f"level=({level_start:.3f},{level_end:.3f}), duration={level_end-level_start:.3f}s, "
-                f"samples={n_samples}"
+                f"[crop {real_id}.{level}] SHORT/EMPTY source={source}: "
+                f"level=({start:.3f},{end:.3f}), duration={end-start:.3f}s, samples={n_samples}"
             )
         if not mask.any():
             return signal.iloc[0:0].copy()

@@ -32,6 +32,10 @@ class DatasetConfig:
     # If provided and "FACE" or "WEBCAM" is in modalities, the loader reads
     # per-subject affect CSVs and the runner extracts window-level affect features.
     face_zip_path: str = ""
+    # Optional path to the BIRAFFE2 game-logs archive (e.g. BIRAFFE2-games.zip).
+    # When provided, the loader reads per-subject per-level Log.json files and uses
+    # the real level start/end timestamps instead of splitting the GAME phase evenly.
+    games_zip_path: str = ""
 
 
 @dataclass
