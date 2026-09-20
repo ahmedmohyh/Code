@@ -8,19 +8,19 @@ This script sequentially runs:
 - Setup 07: 5-minute fixed window
 - Setup 09: heartpy cleaning/features
 
-Outputs are written to results/<experiment_name>/ as usual.
+Outputs are written to results/biraffe2/<experiment_name>/.
 """
 import subprocess
 import sys
 from pathlib import Path
 
 CONFIGS = [
-    "config/setup_02_label_margin_01.yaml",
-    "config/setup_03_without_time_distortion.yaml",
-    "config/setup_04_no_zscore.yaml",
-    "config/setup_05_no_outlier.yaml",
-    "config/setup_07_5min_window.yaml",
-    "config/setup_09_heartpy.yaml",
+    "config/biraffe2/normal_configs/setup_02_label_margin_01.yaml",
+    "config/biraffe2/normal_configs/setup_03_without_time_distortion.yaml",
+    "config/biraffe2/normal_configs/setup_04_no_zscore.yaml",
+    "config/biraffe2/normal_configs/setup_05_no_outlier.yaml",
+    "config/biraffe2/normal_configs/setup_07_5min_window.yaml",
+    "config/biraffe2/normal_configs/setup_09_heartpy.yaml",
 ]
 
 RUNNER = "scripts/run_experiment_fast.py"

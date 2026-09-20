@@ -1,10 +1,10 @@
-"""Build a single ablation comparison table from all experiment results.
+"""Build a single ablation comparison table from all BIRAFFE2 experiment results.
 
-Reads every `results/<experiment>/metrics.json`, extracts the best
+Reads every `results/biraffe2/<experiment>/metrics.json`, extracts the best
 subject-level AUC per experiment (and per model), then writes:
 
-- `results/ablation_comparison.md` — human-readable Markdown table
-- `results/ablation_comparison.csv` — machine-readable CSV
+- `results/biraffe2/ablation_comparison.md` — human-readable Markdown table
+- `results/biraffe2/ablation_comparison.csv` — machine-readable CSV
 
 Usage:
     python scripts/build_ablation_table.py
@@ -15,7 +15,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-RESULTS_DIR: Path = Path("results")
+RESULTS_DIR: Path = Path("results") / "biraffe2"
 OUTPUT_MD: Path = RESULTS_DIR / "ablation_comparison.md"
 OUTPUT_CSV: Path = RESULTS_DIR / "ablation_comparison.csv"
 OUTPUT_PERM_MD: Path = RESULTS_DIR / "permutation_importance.md"

@@ -19,22 +19,28 @@ python -m venv .venv
 pip install -r requirements.txt
 
 # Run the baseline setup (fast parallel runner)
-python scripts/run_experiment_fast.py --config config/normal_configs/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
 
 # Run the averaged-levels baseline
-python scripts/run_experiment_fast.py --config config/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml --n-jobs -1
 
 # Run all ablation setups that need no new loaders (Setups 02-05, 07, 09)
 python scripts/run_batch_setups.py
 
 # Run permutation importance on all previously executed setups (16 configs, all cores)
-python scripts/run_batch_from_config.py --batch config/normal_configs/batch_permutation_setups.yaml
+python scripts/run_batch_from_config.py --batch config/biraffe2/normal_configs/batch_permutation_setups.yaml
 
 # If interrupted, resume from the last completed setup
-python scripts/run_batch_from_config.py --batch config/normal_configs/batch_permutation_setups.yaml --resume
+python scripts/run_batch_from_config.py --batch config/biraffe2/normal_configs/batch_permutation_setups.yaml --resume
 
 # Run all previously executed setups with real per-level timestamps from game logs
-python scripts/run_batch_from_config.py --batch config/real_level_configs/batch_real_level_times_setups.yaml --n-jobs -1
+python scripts/run_batch_from_config.py --batch config/biraffe2/batch_real_level_times_setups.yaml --n-jobs -1
+
+# Run the Irshad/PhySF setup (ECG + EDA + EEG)
+python scripts/run_experiment_fast.py --config config/irshad/setup_08_irshad_physf.yaml --n-jobs -1
+
+# Run the same setup as a batch
+python scripts/run_batch_from_config.py --batch config/irshad/batch_irshad_physf.yaml
 
 # Regenerate ablation tables
 python scripts/build_ablation_table.py
@@ -49,9 +55,15 @@ python scripts/build_class_balance_table.py
 ## Repository structure
 
 ```text
-config/                 # YAML configs, organised in subfolders
-├── normal_configs/     # Original ablation setups
-└── real_level_configs/ # Mirror configs using real per-level timestamps
+config/                 # YAML configs, organised by dataset
+├── biraffe2/
+│   ├── normal_configs/     # Original BIRAFFE2 ablation setups
+│   ├── real_level_configs/ # BIRAFFE2 mirror configs using real per-level timestamps
+│   ├── batch_*.yaml        # BIRAFFE2 batch definitions
+│   └── diagnostic_*.yaml   # BIRAFFE2 diagnostic batches
+├── irshad/
+│   ├── setup_08*.yaml      # Irshad/PhySF ablation setups
+│   └── batch_irshad_physf.yaml
 flow_lol/               # Main package
 ├── data/               # Loaders and labelers
 ├── preprocessing/      # Signal cleaning, normalisation, outlier handling, baseline correction
@@ -64,6 +76,9 @@ flow_lol/               # Main package
 scripts/                # Experiment runners
 notebooks/              # Exploration notebooks
 results/                # Outputs (ignored by git)
+├── biraffe2/           # BIRAFFE2 summary tables + reproducible per-run JSON
+├── irshad/             # Irshad/PhySF summary tables + reproducible per-run JSON
+├── hyperparameters.md/.csv  # Shared hyperparameter documentation
 tests/                  # Unit tests
 ```
 
@@ -73,32 +88,32 @@ tests/                  # Unit tests
 
 | Setup | File | Purpose |
 |-------|------|---------|
-| 01 | `config/setup_01_biraffe2_ecg_baseline.yaml` | BIRAFFE2 ECG-only baseline |
-| 01b | `config/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml` | Baseline with averaged 3-level Flow label |
-| 01c | `config/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml` | Treat each GEQ level as a separate pseudo-subject |
-| 01d | `config/normal_configs/setup_01d_biraffe2_ecg_levels_as_subjects_real_level_times.yaml` | Same as 01c but uses real level timestamps from game logs |
-| 02 | `config/setup_02_label_margin_01.yaml` | Median split with margin band 0.1 |
-| 03 | `config/setup_03_without_time_distortion.yaml` | Labels without Time Distortion item |
-| 04 | `config/setup_04_no_zscore.yaml` | No z-standardisation |
-| 05 | `config/setup_05_no_outlier.yaml` | No outlier removal |
-| 06 | `config/setup_06_full_multimodal.yaml` | BIRAFFE2 ECG + EDA + webcam affect |
-| 07 | `config/setup_07_5min_window.yaml` | 5-minute fixed window |
-| 08 | `config/setup_08_irshad_physf.yaml` | Irshad/PhySF ECG + EDA + EEG with baseline correction |
-| 09 | `config/setup_09_heartpy.yaml` | ECG cleaning/features with heartpy |
-| 10 | `config/setup_10_all_models.yaml` | All classical + LSTM model comparison |
-| 01d | `config/setup_01d_drop_unreliable_60s_features.yaml` | Drop VLF/DFA_alpha2/frequency features from 60 s windows |
-| 01e | `config/setup_01e_per_subject_normalization.yaml` | Per-subject normalization before LOSO |
-| 01f | `config/setup_01f_shorter_step.yaml` | 60 s windows with 10 s step |
-| 01g | `config/setup_01g_levels_as_subjects_per_subject_norm.yaml` | Setup 01c + per-subject normalization |
-| 11 | `config/setup_11_raw_geq_without_time_distortion.yaml` | Recompute Flow from raw GEQ items excluding item 25 |
-| 12 | `config/setup_12_biraffe2_baseline_correction.yaml` | Baseline correction from procedure-file baseline |
+| 01 | `config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml` | BIRAFFE2 ECG-only baseline |
+| 01b | `config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml` | Baseline with averaged 3-level Flow label |
+| 01c | `config/biraffe2/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml` | Treat each GEQ level as a separate pseudo-subject |
+| 01c real-level | `config/biraffe2/real_level_configs/setup_01c_biraffe2_ecg_levels_as_subjects_real_level_times.yaml` | Same as 01c but uses real level timestamps from game logs |
+| 02 | `config/biraffe2/normal_configs/setup_02_label_margin_01.yaml` | Median split with margin band 0.1 |
+| 03 | `config/biraffe2/normal_configs/setup_03_without_time_distortion.yaml` | Labels without Time Distortion item |
+| 04 | `config/biraffe2/normal_configs/setup_04_no_zscore.yaml` | No z-standardisation |
+| 05 | `config/biraffe2/normal_configs/setup_05_no_outlier.yaml` | No outlier removal |
+| 06 | `config/biraffe2/normal_configs/setup_06_full_multimodal.yaml` | BIRAFFE2 ECG + EDA + webcam affect |
+| 07 | `config/biraffe2/normal_configs/setup_07_5min_window.yaml` | 5-minute fixed window |
+| 08 | `config/irshad/setup_08_irshad_physf.yaml` | Irshad/PhySF ECG + EDA + EEG (filename labels, no baseline) |
+| 09 | `config/biraffe2/normal_configs/setup_09_heartpy.yaml` | ECG cleaning/features with heartpy |
+| 10 | `config/biraffe2/normal_configs/setup_10_all_models.yaml` | All classical + LSTM model comparison |
+| 01d | `config/biraffe2/normal_configs/setup_01d_drop_unreliable_60s_features.yaml` | Drop VLF/DFA_alpha2/frequency features from 60 s windows |
+| 01e | `config/biraffe2/normal_configs/setup_01e_per_subject_normalization.yaml` | Per-subject normalization before LOSO |
+| 01f | `config/biraffe2/normal_configs/setup_01f_shorter_step.yaml` | 60 s windows with 10 s step |
+| 01g | `config/biraffe2/normal_configs/setup_01g_levels_as_subjects_per_subject_norm.yaml` | Setup 01c + per-subject normalization |
+| 11 | `config/biraffe2/normal_configs/setup_11_raw_geq_without_time_distortion.yaml` | Recompute Flow from raw GEQ items excluding item 25 |
+| 12 | `config/biraffe2/normal_configs/setup_12_biraffe2_baseline_correction.yaml` | Baseline correction from procedure-file baseline |
 
 Both Setup 03 and Setup 11 read the raw GEQ item CSVs (`BIRAFFE2-metadata-RAW-GEQ-Level01.csv`, etc.) and recompute the level-1 Flow score from items 5, 13, 28, 31, dropping item 25 ("I lost track of time"). See `docs/GEQ_ITEMS.md` for the item mapping.
 
 Run any setup with:
 
 ```bash
-python scripts/run_experiment.py --config config/normal_configs/setup_01_biraffe2_ecg_baseline.yaml
+python scripts/run_experiment_fast.py --config config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml
 ```
 
 ---
@@ -117,13 +132,18 @@ Each config changes one or more of the following:
 - **Models:** classical vs deep-learning classifiers
 - **Validation:** LOSO, per-class metrics, permutation feature importance
 
-Results are written to `results/<experiment_name>/`.
+Results are written to `results/biraffe2/<experiment_name>/` for BIRAFFE2 configs
+and `results/irshad/<experiment_name>/` for Irshad/PhySF configs.
+
+The repository keeps only summary `.md` and `.csv` files under `results/`. Per-run
+`metrics.json` / `config.json` folders are removed after use; they can be reproduced
+by rerunning the corresponding experiment.
 
 Permutation importance is computed inside LOSO CV (when `permutation: true` in the
 config). For each left-out subject, every feature column is shuffled on the test
 windows and the accuracy drop is recorded. Drops are averaged across folds and also
 grouped by modality: **ECG**, **EDA**, **FACE**. Grouped results are written to
-`results/permutation_importance_by_group.md/.csv` by `scripts/build_ablation_table.py`.
+`results/biraffe2/permutation_importance_by_group.md/.csv` by `scripts/build_ablation_table.py`.
 
 ---
 
@@ -208,13 +228,13 @@ felt after level 1. Averaging the three scores gives a subject-level flow score
 that better represents the overall session. This is implemented in:
 
 ```bash
-config/setup_01_biraffe2_ecg_baseline_avg_levels.yaml
+config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml
 ```
 
 Run it with:
 
 ```bash
-python scripts/run_experiment_fast.py --config config/setup_01_biraffe2_ecg_baseline_avg_levels.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline_avg_levels.yaml --n-jobs -1
 ```
 
 Result on all 102 subjects (RandomForest, 60 s ECG windows):
@@ -254,7 +274,7 @@ column:
 > to crop biosignal/face segments to the exact level duration. Missing trailing
 > levels (e.g. empty Level-3 logs) are back-filled from the last known level end
 > to `GAME END`. Set configs that use this feature set `games_zip_path` and have
-> the `_real_level_times` suffix in `config/real_level_configs/`.
+> the `_real_level_times` suffix in `config/biraffe2/real_level_configs/`.
 
 This turns up to 102 real subjects into up to 306 pseudo-subjects (01c) or up to
 612 pseudo-subjects (01g). LOSO CV leaves one pseudo-subject out at a time.
@@ -273,13 +293,13 @@ Additional caveats:
 Run it with:
 
 ```bash
-python scripts/run_experiment_fast.py --config config/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/biraffe2/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml --n-jobs -1
 
 # Or run a batch of configs defined in a YAML file
-python scripts/run_batch_from_config.py --batch config/normal_configs/diagnostic_01d_01g_batch.yaml
+python scripts/run_batch_from_config.py --batch config/biraffe2/diagnostic_01d_01g_batch.yaml
 
 # Re-run with real per-level timestamps from game logs
-python scripts/run_experiment_fast.py --config config/real_level_configs/setup_01c_biraffe2_ecg_levels_as_subjects_real_level_times.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/biraffe2/real_level_configs/setup_01c_biraffe2_ecg_levels_as_subjects_real_level_times.yaml --n-jobs -1
 ```
 
 Result: RandomForest achieved subject-level AUC **0.628** on 247 valid pseudo-subjects, far above the previous pure-ECG ceiling of ~0.40. Setup 01g originally dropped to **0.501** when per-subject normalization was applied, but a re-run with per-subject normalization off and z-standardisation on recovered to **0.551** (n=460). This confirms that subject-specific baseline physiology is a major driver of the 01c improvement, while adding the 2013 scoring version does not beat the 3-column 01c result.
@@ -310,7 +330,9 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Parallel fast runner (`run_experiment_fast.py`) using all CPU cores
 - ✅ Subject-level aggregation for valid ROC-AUC with per-subject labels
 - ✅ Averaged 3-level Flow label config created and run
-- ✅ EDA/webcam loaders implemented and used in Setup 06; EEG / Irshad-PhySF / deep models remain stubs
+- ✅ EDA/webcam loaders implemented and used in Setup 06
+- ✅ Irshad/PhySF loader implemented and wired into the fast runner (Setup 08)
+- ✅ Deep-learning models (MLP, LSTM, 1D-CNN) wired into the fast runner
 - ✅ Ran remaining configs that need no new loaders (Setups 02–05, 07, 09)
 - ✅ Implemented Setup 01c config + loader changes (levels as pseudo-subjects)
 - ✅ Added diagnostic configs 01d, 01e, 01f, 01g, 11, 12 to test weak-AUC assumptions
@@ -319,18 +341,18 @@ All diagnostic configs 01d–01g and 11 have been run. 01g produced 540 pseudo-s
 - ✅ Implemented raw-GEQ item recomputation in `BIRAFFE2Loader` (Setup 03 / Setup 11)
 - ✅ Fixed raw GEQ scoring to subtract 1.0 and match BIRAFFE2 pre-computed scale
 - ✅ Ran corrected Setups 03 / 11: AUC 0.625 with RandomForest on 260 pseudo-subjects (Time Distortion removal slightly hurts vs. 01c)
-- ✅ Added `scripts/build_ablation_table.py` and generated `results/ablation_comparison.md/csv`
+- ✅ Added `scripts/build_ablation_table.py` and generated `results/biraffe2/ablation_comparison.md/csv`
 - ✅ Ran Setup 12 (procedure-file baseline correction + levels as pseudo-subjects): SVM AUC = **0.676** on 223 pseudo-subjects — new best result
 - ✅ Ran Setup 06 (ECG + EDA + webcam affect): RandomForest AUC = **0.633** on 107 valid AUC folds; 273 pseudo-subjects entered LOSO, 166 folds skipped due to single-class training sets
 - ✅ Fixed Setup 06 fold-skip root cause (`train_only` IQR outlier removal) and re-ran: RandomForest AUC = **0.617** on all 273 pseudo-subjects (0 skipped)
 - ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10)
-- ✅ Ran full permutation batch on all 16 previously executed setups (`config/normal_configs/batch_permutation_setups.yaml`, all CPU cores)
-- ✅ Generated `results/permutation_importance.md/.csv` and `results/permutation_importance_by_group.md/.csv`
+- ✅ Ran full permutation batch on all 16 previously executed setups (`config/biraffe2/normal_configs/batch_permutation_setups.yaml`, all CPU cores)
+- ✅ Generated `results/biraffe2/permutation_importance.md/.csv` and `results/biraffe2/permutation_importance_by_group.md/.csv`
 - ✅ Implemented real per-level timestamp loading from `BIRAFFE2-games.zip`
-- ✅ Created `config/real_level_configs/` mirror configs that re-run all previous setups with real level boundaries
+- ✅ Created `config/biraffe2/real_level_configs/` mirror configs that re-run all previous setups with real level boundaries
 - ✅ Ran the real-level-timestamp batch on all 16 mirror configs
-- ✅ Generated `results/ablation_comparison_real_level_times.md/.csv`
-- ✅ Created `scripts/build_class_balance_table.py` and `results/class_balance.md/.csv` reporting balance per label column
+- ✅ Generated `results/biraffe2/ablation_comparison_real_level_times.md/.csv`
+- ✅ Created `scripts/build_class_balance_table.py` and `results/biraffe2/class_balance.md/.csv` reporting balance per label column
 - ✅ Repaired corrupted `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` (and its real-level mirror)
 
 ### Latest ablation results (subject-level)
@@ -390,9 +412,9 @@ therefore appears to make physiological prediction marginally harder, supporting
 the hypothesis that Time Distortion contributes useful signal for this ECG-based
 classifier.
 
-A full comparison table across all runnable setups is automatically generated by
-`scripts/build_ablation_table.py` and written to `results/ablation_comparison.md`
-and `results/ablation_comparison.csv`.
+A full comparison table across all runnable BIRAFFE2 setups is automatically generated by
+`scripts/build_ablation_table.py` and written to `results/biraffe2/ablation_comparison.md`
+and `results/biraffe2/ablation_comparison.csv`.
 
 Takeaway: combining baseline correction with the level-as-subjects design pushes AUC
 to **0.676** with SVM, the best result so far. This suggests that
@@ -403,7 +425,7 @@ baseline correction raises it further to 0.676.
 ### Effect of real per-level timestamps
 
 All pseudo-subject setups were re-run with exact level boundaries from the game
-logs (`config/real_level_configs/batch_real_level_times_setups.yaml`). The main
+logs (`config/biraffe2/batch_real_level_times_setups.yaml`). The main
 finding is that real timestamps change the **window-level class balance**, because
 levels have different durations:
 
@@ -430,9 +452,69 @@ unevenly distributed across classes. The next step is to address this imbalance,
 e.g. by weighting levels equally, resampling, or using a fixed number of windows
 per level.
 
-Class balance is reported per label column in `results/class_balance.md` and
-`results/class_balance.csv`, because balance is a property of each binary label
+Class balance is reported per label column in `results/biraffe2/class_balance.md` and
+`results/biraffe2/class_balance.csv`, because balance is a property of each binary label
 column, not of the dataset or the setup as a whole.
+
+---
+
+## Deep-learning models
+
+The pipeline now includes three PyTorch classifiers in `flow_lol/models/deep.py`:
+
+| Model | Architecture | Config name |
+|-------|--------------|-------------|
+| `MLP` | Two hidden layers (128 → 64), ReLU, dropout 0.3 | `MLP` |
+| `LSTM` | Single LSTM (hidden=64), each window treated as one time step | `LSTM` |
+| `CNN1D` | Two 1-D conv blocks (16 → 32 filters) over the feature vector | `CNN1D` |
+
+All three consume the same flat per-window feature matrix as the classical
+classifiers. MLP uses it directly; LSTM and CNN1D add a dummy sequence dimension.
+This is a pragmatic first integration. To use them, add model names under
+`models.deep` in any config:
+
+```yaml
+models:
+  classical:
+    - "RandomForest"
+    - "SVM"
+  deep:
+    - "MLP"
+    - "LSTM"
+    - "CNN1D"
+```
+
+Deep models are evaluated with the same LOSO CV and metrics as classical models.
+Fold-level parallelism is disabled for deep models (`n_jobs=1`) because PyTorch
+handles its own CPU/GPU parallelism.
+
+---
+
+## Irshad/PhySF dataset
+
+`config/irshad/setup_08_irshad_physf.yaml` runs the Irshad/PhySF dataset
+(25 subjects, 128 Hz, 23 channels, binary `flow` / `no_flow` labels from filename).
+The loader (`flow_lol/data/loaders/irshad_loader.py`) reads a zip of
+`s<id>_<flow|no_flow>.csv` files and returns ECG, EDA, and EEG columns.
+
+Run it with:
+
+```bash
+python scripts/run_experiment_fast.py --config config/irshad/setup_08_irshad_physf.yaml --n-jobs -1
+```
+
+Or as a batch:
+
+```bash
+python scripts/run_batch_from_config.py --batch config/irshad/batch_irshad_physf.yaml
+```
+
+Before running, update `dataset.path` in the config to point to your local
+`PhySF.zip`. The config uses ECG + EDA + EEG features, RandomForest as the
+classical model, and `MLP` as the deep model. You can replace or extend the
+`models.classical` and `models.deep` lists exactly as for BIRAFFE2.
+
+---
 
 Adding EDA and webcam affect features (Setup 06) initially produced AUC **0.633**
 on 107 pseudo-subjects because 166 of 273 LOSO folds were skipped. A diagnostic
@@ -447,7 +529,7 @@ subject-level AUC **0.617** on **273** pseudo-subjects (0 skipped folds).
 The slightly lower AUC compared with the 107-fold estimate (0.633) is the more
 reliable result because it uses all pseudo-subjects instead of a biased subset
 that survived aggressive window dropping. A detailed comparison is written to
-`results/setup_06_dropout/compare_01c_06_loso.json`.
+`results/biraffe2/setup_06_dropout/compare_01c_06_loso.md` (reproducible by rerunning the diagnostic script).
 
 The pseudo-subjects still share baseline physiology, so generalisation remains
 closer to "leave-one-level-out" than to true cross-person generalisation.

@@ -248,11 +248,13 @@ Example ablations:
 
 ## 7. Files and scripts
 
-- `config/setup_*.yaml` — one experiment configuration per ablation.
+- `config/biraffe2/**/*.yaml` — BIRAFFE2 experiment configurations and batch definitions.
+- `config/irshad/**/*.yaml` — Irshad/PhySF experiment configurations and batch definitions.
 - `scripts/run_experiment_fast.py` — parallel runner.
 - `flow_lol/validation/loso_cv.py` — LOSO cross-validation.
 - `flow_lol/features/extractors/ecg_features.py` — ECG/HRV feature extraction.
-- `results/<experiment_name>/` — output metrics and config for each run.
+- `results/biraffe2/<experiment_name>/` — BIRAFFE2 output metrics and config for each run.
+- `results/irshad/<experiment_name>/` — Irshad/PhySF output metrics and config for each run.
 
 ---
 

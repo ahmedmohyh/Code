@@ -19,7 +19,7 @@ from scripts.run_experiment_fast import load_biraffe2_data_fast
 
 
 def load_results(name):
-    path = Path(f"results/{name}/metrics.json")
+    path = Path(f"results/biraffe2/{name}/metrics.json")
     with open(path) as f:
         return json.load(f)
 
@@ -46,8 +46,8 @@ def main():
 
     # 2. Rebuild X_by_subject, y_by_subject for both configs
     print("\nRebuilding data loaders...")
-    cfg01c = load_config("config/setup_01c_biraffe2_ecg_levels_as_subjects.yaml")
-    cfg06 = load_config("config/setup_06_full_multimodal.yaml")
+    cfg01c = load_config("config/biraffe2/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml")
+    cfg06 = load_config("config/biraffe2/normal_configs/setup_06_full_multimodal.yaml")
 
     print("\nLoading 01c (ECG only)...")
     X01c, y01c, names01c, _ = load_biraffe2_data_fast(cfg01c, n_jobs=18, cache_dir="cache/biosigs")
@@ -202,22 +202,33 @@ def main():
     print(f"  01c mean NaN fraction: {np.mean(nan01c):.4%}")
     print(f"  06  mean NaN fraction: {np.mean(nan06):.4%}")
 
-    # 6. Save detailed report
-    out_dir = Path("results/setup_06_dropout")
+    # 6. Save detailed report as Markdown
+    out_dir = Path("results/biraffe2/setup_06_dropout")
     out_dir.mkdir(parents=True, exist_ok=True)
-    report = {
-        "n_01c": len(s01c),
-        "n_06": len(s06),
-        "common": len(common),
-        "label_differences": len(label_diff),
-        "skip_01c_simulated": len(skip01c),
-        "skip_06_simulated": len(skip06),
-        "skipped_in_06_not_01c": only06,
-        "skipped_in_01c_not_06": sorted(skip01c_set - skip06_set),
-    }
-    with open(out_dir / "compare_01c_06_loso.json", "w") as f:
-        json.dump(report, f, indent=2)
-    print(f"\nSaved comparison report: {out_dir / 'compare_01c_06_loso.json'}")
+    report_path = out_dir / "compare_01c_06_loso.md"
+    lines = [
+        "# Setup 01c vs Setup 06 LOSO dropout comparison",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+        f"| Subjects in 01c | {len(s01c)} |",
+        f"| Subjects in 06 | {len(s06)} |",
+        f"| Common subjects | {len(common)} |",
+        f"| Label differences | {len(label_diff)} |",
+        f"| Simulated skipped in 01c | {len(skip01c)} |",
+        f"| Simulated skipped in 06 | {len(skip06)} |",
+        "",
+        f"## Skipped in 06 but not in 01c ({len(only06)} subjects)",
+        "",
+        ", ".join(str(s) for s in only06) if only06 else "_None_",
+        "",
+        f"## Skipped in 01c but not in 06 ({len(skip01c_set - skip06_set)} subjects)",
+        "",
+        ", ".join(str(s) for s in sorted(skip01c_set - skip06_set)) if (skip01c_set - skip06_set) else "_None_",
+        "",
+    ]
+    report_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"\nSaved comparison report: {report_path}")
 
 
 if __name__ == "__main__":

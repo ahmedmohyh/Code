@@ -19,6 +19,7 @@ datasets.
 | Component | Status | Notes |
 |-----------|--------|-------|
 | Config system (YAML → dataclass) | ✅ Done | One config per ablation setup |
+| Config / result organisation | ✅ Done | `config/biraffe2/` and `config/irshad/`; `results/biraffe2/` and `results/irshad/`; only `.md`/`.csv` kept |
 | BIRAFFE2 ECG loader | ✅ Done | Reads zip + metadata, caches CSVs |
 | Level-as-subjects mode | ✅ Done | Splits GAME phase into N equal segments (N = number of levels used); creates pseudo-subjects |
 | Raw GEQ level selection | ✅ Done | New `raw_geq_levels` config field makes level choice explicit |
@@ -32,10 +33,16 @@ datasets.
 | Z-standardisation | ✅ Done | Per-fold, train-fit / test-transform |
 | LOSO cross-validation | ✅ Done | Subject-level aggregation for valid AUC |
 | Classical classifiers | ✅ Done | RandomForest; SVM / XGBoost / k-NN configured but not yet all tested |
-| Deep learning models | 🟡 Stubs | MLP / LSTM / 1D-CNN wrappers exist but not wired to runner |
+| Deep learning models | ✅ Done | MLP / LSTM / 1D-CNN wired into fast runner; consume same flat window features as classical models |
+| Real per-level timestamps from game logs | ✅ Done | Loader reads `BIRAFFE2-games.zip`; mirror configs created and run |
+| Real-level-timestamp ablation table | ✅ Done | `results/biraffe2/ablation_comparison_real_level_times.md/.csv` |
+| Equal-split vs real-timestamp comparison | ✅ Done | `results/biraffe2/equal_vs_real_level_times.md/.csv` |
+| Class balance per label column | ✅ Done | `results/biraffe2/class_balance.md/.csv` reports balance per of the 6 label columns |
+| Hyperparameter documentation | ✅ Done | `results/hyperparameters.md/.csv` lists current fixed hyperparameters |
 | Reporting | ✅ Done | Saves JSON results + config per run |
 | Parallel runner | ✅ Done | `run_experiment_fast.py` with subject- and fold-level parallelism |
-| Batch runner | ✅ Done | `run_batch_setups.py` for runnable configs |
+| Irshad/PhySF loader | ✅ Done | `IrshadLoader` reads PhySF.zip; runner branch handles ECG/EDA/EEG |
+| Batch runner | ✅ Done | `run_batch_setups.py` and `run_batch_from_config.py` for runnable configs |
 | Documentation | ✅ Done | README, glossary, GEQ items, code walkthrough |
 
 ---
@@ -115,13 +122,30 @@ for many level segments.
 
 **What exists:** A config `setup_08_irshad_physf.yaml`.
 
-**What should happen:** Implement a loader for the Irshad/PhySF dataset (ECG +
-EDA + EEG), with baseline correction and EEG preprocessing via MNE-Python.
+**What was done:**
+- `flow_lol/data/loaders/irshad_loader.py` was implemented. It reads a zip
+  archive of `s<id>_<flow|no_flow>.csv` files (128 Hz, 23 channels) and returns a
+  signal DataFrame with columns `TIMESTAMP`, `ECG`, `EDA`, and `EEG.*`.
+- `scripts/run_experiment_fast.py` was extended with an Irshad branch. The same
+  ECG/EDA cleaning and feature extraction used for BIRAFFE2 is applied, and EEG
+  band-power features (theta/alpha/beta, per-channel + aggregates) are extracted
+  via `flow_lol/features/extractors/eeg_features.py`.
+- The config `config/irshad/setup_08_irshad_physf.yaml` was updated with
+  the correct dataset name and feature list. A dedicated batch config
+  `config/irshad/batch_irshad_physf.yaml` can run Setup 08 and any future
+  Irshad variants.
 
-**Why it matters:** It is the only dataset in the pipeline that contains EEG,
-which may be more informative than ECG/EDA alone.
+**How to run:**
+```bash
+python scripts/run_experiment_fast.py --config config/irshad/setup_08_irshad_physf.yaml --n-jobs -1
+# or as a batch
+python scripts/run_batch_from_config.py --batch config/irshad/batch_irshad_physf.yaml
+```
 
-**Blocker:** No loader exists yet; dataset format and path must be confirmed.
+**Note:** Adjust `dataset.path` in the config to the actual location of
+`PhySF.zip` on your machine before running.
+
+**Status:** Implementation complete, not yet run end-to-end.
 
 ### 3.3 Alternative packages fully wired
 
@@ -152,24 +176,69 @@ feature families drive predictions.
 
 **What exists:** Wrappers in `flow_lol/models/deep.py` for MLP, LSTM, 1D-CNN.
 
-**What should happen:** Integrate them into `run_experiment.py` / `run_experiment_fast.py`
-so `setup_10_all_models.yaml` can compare classical and deep models.
+**What was done:** The fast runner (`scripts/run_experiment_fast.py`) now loops
+over `config.models.deep` after the classical models. Each deep model is built via
+`build_deep_classifier(name, n_features=...)` and evaluated with the same LOSO
+CV and metrics as the classical models.
 
-**Why it matters:** Supervisor comments mention model comparison (comment 0 / 10).
+**Available models:**
+| Model | Description | How to select |
+|-------|-------------|---------------|
+| `MLP` | Two-hidden-layer fully connected network (128 → 64 units, ReLU, dropout 0.3) | Add `- "MLP"` under `models.deep` |
+| `LSTM` | Single LSTM layer (hidden=64) reading each window as a 1-step sequence | Add `- "LSTM"` under `models.deep` |
+| `CNN1D` | Two 1-D convolution blocks (16 → 32 filters) over the feature vector | Add `- "CNN1D"` under `models.deep` |
 
-**Open question:** Deep models need subject-level window sequences as input, not
-just flat per-window feature vectors. The current data structure supports flat
-features only.
+**Important:** All three models currently consume the same flat per-window
+feature vectors as the classical classifiers. MLP works directly on this input;
+LSTM and CNN1D add a dummy sequence dimension of length 1. This is a pragmatic
+first integration. A proper sequence model that consumes raw multi-window signal
+slices is still future work.
 
-### 3.6 Experiment tracking and ablation comparison table
+**Fixed hyperparameters** (see `results/hyperparameters.md`, dataset-independent):
+- `max_epochs=50`
+- `batch_size=32`
+- `lr=1e-3`
+- `dropout=0.3`
+
+**How to run:** Add the desired model names to `models.deep` in any config, e.g.
+```yaml
+models:
+  classical:
+    - "RandomForest"
+  deep:
+    - "MLP"
+    - "LSTM"
+    - "CNN1D"
+```
+
+**Status:** Wired into runner. Not yet run end-to-end on BIRAFFE2 or Irshad.
+
+### 3.6 Hyperparameter optimisation
+
+**What exists:** All classical classifiers use fixed, default-style
+hyperparameters (`C=1.0` for SVM/LR, `n_estimators=200` for RF/XGB, `n_neighbors=5`
+for kNN). They are reasonable starting points but not optimised for this dataset.
+
+**What should happen:** Add an inner hyperparameter search inside each LOSO fold,
+using the training data only. Candidate grids:
+- RandomForest: `n_estimators` ∈ {100, 200, 500}, `max_depth` ∈ {None, 10, 20}
+- SVM: `C` ∈ {0.1, 1, 10}, `kernel` ∈ {linear, rbf}
+- kNN: `n_neighbors` ∈ {3, 5, 7, 11}
+- LogisticRegression: `C` ∈ {0.1, 1, 10}
+- XGBoost: `n_estimators` ∈ {100, 200}, `max_depth` ∈ {3, 4, 6}, `learning_rate` ∈ {0.01, 0.05, 0.1}
+
+**Why it matters:** The supervisor explicitly asked about hyperparameters. Tuning
+is the next logical step after confirming that the baseline architecture works.
+
+### 3.7 Experiment tracking and ablation comparison table
 
 **Status:** Ablation comparison table done.
 
 **What exists:** Each run writes its own JSON results.
 
 **What was done:** `scripts/build_ablation_table.py` reads all
-`results/*/metrics.json` files and creates `results/ablation_comparison.md` and
-`results/ablation_comparison.csv` with experiment name, best model, accuracy,
+`results/biraffe2/*/metrics.json` files and creates `results/biraffe2/ablation_comparison.md` and
+`results/biraffe2/ablation_comparison.csv` with experiment name, best model, accuracy,
 F1, AUC, and n.
 
 **Why it matters:** The thesis needs a clear ablation overview, not scattered per-run files.
@@ -328,4 +397,5 @@ Pick whichever is most useful for the thesis write-up.
 - `docs/GLOSSARY_AND_METHODOLOGY.md` — how features are computed and why
 - `docs/GEQ_ITEMS.md` — GEQ scoring and label rationale
 - `docs/SETUP_01_CODE_WALKTHROUGH.md` — exact code flow for Setup 01
-- `config/setup_01_biraffe2_ecg_baseline.yaml` — example config
+- `config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml` — example BIRAFFE2 config
+- `config/irshad/setup_08_irshad_physf.yaml` — example Irshad/PhySF config

@@ -1,0 +1,84 @@
+# Setup 01d: same pseudo-subject design as 01c, but uses real per-level
+# timestamps from the BIRAFFE2 game logs instead of equal-duration GAME splits.
+# This maps each level's ECG/EDA/face windows to the actual level start/end
+# timestamps recorded in SUB<id>-Level<xx>_Log.json.
+
+experiment_name: "setup_01d_biraffe2_ecg_levels_as_subjects_real_level_times"
+seed: 42
+
+dataset:
+  name: "BIRAFFE2"
+  path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip"
+  metadata_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv"
+  procedure_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-procedure.zip"
+  games_zip_path: "../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-games.zip"
+  modalities:
+    - "ECG"
+  score_column:
+    - "GEQ-1-FLOW-2018"
+    - "GEQ-2-FLOW-2018"
+    - "GEQ-3-FLOW-2018"
+  treat_levels_as_subjects: true
+
+label:
+  method: "median_split"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "low"
+    - "high"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: true
+  outlier_strategy: "train_only"
+  baseline_correction: "none"
+  baseline_length_s: 60
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency:
+      - "VLF"
+      - "LF"
+      - "HF"
+      - "LF_HF"
+      - "TP"
+    nonlinear:
+      - "sample_entropy"
+      - "DFA_alpha1"
+      - "DFA_alpha2"
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+    - "SVM"
+    - "kNN"
+    - "LogisticRegression"
+    - "XGBoost"
+  deep:
+    - "MLP"
+    - "LSTM"
+    - "CNN1D"
+
+validation:
+  strategy: "LOSO"
+  permutation: true
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"

@@ -9,7 +9,7 @@ This script inspects the ECG-only BIRAFFE2 baseline in detail:
 6. Probability calibration histogram.
 
 Run with:
-    python scripts/diagnose_setup_01.py --config config/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
+    python scripts/diagnose_setup_01.py --config config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
 """
 import argparse
 import json

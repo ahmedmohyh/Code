@@ -1,0 +1,25 @@
+Classifier,Hyperparameter,Value,Meaning
+RandomForest,n_estimators,200,Number of decision trees in the forest
+RandomForest,max_depth,None,Trees can grow until leaves are pure (no depth limit)
+RandomForest,class_weight,balanced,Weights classes inversely to their frequency
+RandomForest,random_state,42,Reproducible random seed
+RandomForest,n_jobs,-1,Use all CPU cores
+SVM,C,1.0,Regularisation strength (smaller = stronger regularisation)
+SVM,kernel,rbf,Radial basis function kernel
+SVM,probability,True,Enables probability estimates for AUC
+SVM,class_weight,balanced,Weights classes inversely to their frequency
+SVM,random_state,42,Reproducible random seed
+kNN,n_neighbors,5,Number of nearest neighbours used for voting
+kNN,n_jobs,-1,Use all CPU cores
+LogisticRegression,C,1.0,Inverse regularisation strength
+LogisticRegression,max_iter,1000,Maximum optimisation iterations
+LogisticRegression,class_weight,balanced,Weights classes inversely to their frequency
+LogisticRegression,random_state,42,Reproducible random seed
+LogisticRegression,n_jobs,-1,Use all CPU cores
+XGBoost,n_estimators,200,Number of boosting rounds
+XGBoost,max_depth,4,Maximum depth of each tree
+XGBoost,learning_rate,0.05,Step size for each boosting update
+XGBoost,eval_metric,logloss,Loss used during training
+XGBoost,use_label_encoder,False,Disabled to avoid XGBoost warning
+XGBoost,random_state,42,Reproducible random seed
+XGBoost,n_jobs,-1,Use all CPU cores

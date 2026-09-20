@@ -11,8 +11,8 @@ flow vs. no-flow class balance per column, which is the correct way to assess
 balance rather than aggregating across columns or setups.
 
 Outputs:
-    results/class_balance.md
-    results/class_balance.csv
+    results/biraffe2/class_balance.md
+    results/biraffe2/class_balance.csv
 
 Usage:
     python scripts/build_class_balance_table.py
@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 
-RESULTS_DIR = Path("results")
+RESULTS_DIR = Path("results") / "biraffe2"
 OUTPUT_MD = RESULTS_DIR / "class_balance.md"
 OUTPUT_CSV = RESULTS_DIR / "class_balance.csv"
 

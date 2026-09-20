@@ -1,10 +1,10 @@
 """Build an ablation table only for real-level-timestamp experiments.
 
 This is the companion to `build_ablation_table.py`. It scans
-`results/<experiment>_real_level_times/metrics.json` and writes:
+`results/biraffe2/<experiment>_real_level_times/metrics.json` and writes:
 
-- results/ablation_comparison_real_level_times.md
-- results/ablation_comparison_real_level_times.csv
+- results/biraffe2/ablation_comparison_real_level_times.md
+- results/biraffe2/ablation_comparison_real_level_times.csv
 
 Usage:
     python scripts/build_ablation_table_real_level_times.py
@@ -13,7 +13,7 @@ import csv
 import json
 from pathlib import Path
 
-RESULTS_DIR = Path("results")
+RESULTS_DIR = Path("results") / "biraffe2"
 OUTPUT_MD = RESULTS_DIR / "ablation_comparison_real_level_times.md"
 OUTPUT_CSV = RESULTS_DIR / "ablation_comparison_real_level_times.csv"
 
