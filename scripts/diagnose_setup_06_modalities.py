@@ -8,7 +8,7 @@ reports per-subject diagnostics:
   - Which features were produced
 
 No models are trained. Results are printed and saved to
-results/setup_06_dropout/diagnostic_report.txt and per_subject_diagnostics.csv.
+results/biraffe2/setup_06_dropout/diagnostic_report.md and per_subject_diagnostics.csv.
 """
 import sys
 from pathlib import Path
@@ -28,9 +28,9 @@ from tqdm import tqdm
 import numpy as np
 import pandas as pd
 
-CONFIG_PATH = Path("config/setup_06_full_multimodal.yaml")
+CONFIG_PATH = Path("config/biraffe2/normal_configs/setup_06_full_multimodal.yaml")
 CACHE_DIR = "cache/biosigs"
-OUTPUT_DIR = Path("results/setup_06_dropout")
+OUTPUT_DIR = Path("results/biraffe2/setup_06_dropout")
 
 
 def main():
@@ -165,10 +165,11 @@ def main():
         )
 
     report_text = "\n".join(report)
-    (OUTPUT_DIR / "diagnostic_report.txt").write_text(report_text, encoding="utf-8")
+    report_md = f"# Setup 06 Diagnostic Report\n\n```\n{report_text}\n```\n"
+    (OUTPUT_DIR / "diagnostic_report.md").write_text(report_md, encoding="utf-8")
     print("\n" + report_text)
     print(f"\nSaved CSV: {OUTPUT_DIR / 'per_subject_diagnostics.csv'}")
-    print(f"Saved report: {OUTPUT_DIR / 'diagnostic_report.txt'}")
+    print(f"Saved report: {OUTPUT_DIR / 'diagnostic_report.md'}")
 
 
 if __name__ == "__main__":

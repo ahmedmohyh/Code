@@ -45,7 +45,7 @@ flow_lol/
 ```
 
 ### 3. Config-driven design
-- Created `config/base.yaml` as a template.
+- Created `config/biraffe2/normal_configs/base.yaml` as a BIRAFFE2 template.
 - Generated 10 ablation setup configs:
 
 | # | Config | What it changes | Supervisor comment addressed |
@@ -93,7 +93,7 @@ flow_lol/
   - Subject-level: Accuracy=0.434, F1=0.434, AUC=0.362, n=99
   - Slightly better than single-level Setup 01 (AUC 0.336), but still near chance.
 - ✅ Ran batch ablations Setups 02-05, 07, 09. Subject-level AUCs: 02=0.358, 03=0.336, 04=0.336, 05=0.382, 07=0.237, 09=0.396. Setup 09 (heartpy) achieved the best pure-ECG AUC so far.
-- ✅ Created Setup 01c config: `config/setup_01c_biraffe2_ecg_levels_as_subjects.yaml`.
+- ✅ Created Setup 01c config: `config/biraffe2/normal_configs/setup_01c_biraffe2_ecg_levels_as_subjects.yaml`.
   - `BIRAFFE2Loader` now supports `treat_levels_as_subjects=True` for any number of score columns.
   - Reads GAME START/END timestamps from `BIRAFFE2-procedure.zip`.
   - Splits the GAME phase into N equal segments (N = number of score columns) and labels each with the matching score column.
@@ -111,7 +111,7 @@ flow_lol/
   - Window-level: Accuracy=0.532, F1=0.473, AUC=nan
   - Subject-level: Accuracy=0.546, F1=0.545, **AUC=0.551**, n=460 pseudo-subjects.
   - Confirms that removing per-subject normalization recovers much of the AUC, but adding 2013 columns does not beat the 3-column 01c result (AUC 0.628).
-- ✅ Created `scripts/build_ablation_table.py` and regenerated `results/ablation_comparison.md` / `.csv` with all runnable setups.
+- ✅ Created `scripts/build_ablation_table.py` and regenerated `results/biraffe2/ablation_comparison.md` / `.csv` with all runnable setups.
 - ✅ Redesigned and reran Setups 03 / 11 with `treat_levels_as_subjects: true` and `raw_geq_levels: [1, 2, 3]`, creating up to 306 pseudo-subjects with Time-Distortion-free labels.
   - RandomForest subject-level AUC = **0.625**, accuracy = 0.600, F1 = 0.598, n = 260 pseudo-subjects.
   - Setup 11 per-model AUCs: RandomForest 0.625, LogisticRegression 0.578, XGBoost 0.552.
@@ -122,8 +122,8 @@ flow_lol/
 - ✅ Fixed Setup 06 config: changed `outlier_strategy` from `train_only` to `none`.
 - ✅ Re-ran Setup 06: RandomForest AUC=**0.617**, n=**273** valid AUC folds (0 skipped); the lower AUC is the honest estimate over all pseudo-subjects.
 - ✅ Implemented permutation feature importance inside LOSO CV (supervisor comment #10). Per-feature and per-feature-group (ECG/EDA/FACE) drops are stored in `metrics.json` and aggregated across folds.
-- ✅ Created `config/batch_permutation_setups.yaml` to run permutation analysis on all 16 previously executed setups with all CPU cores via `scripts/run_batch_from_config.py`.
-- ✅ Completed the full permutation batch (16/16 configs, 0 failures) and regenerated `results/ablation_comparison.md/.csv`, `results/permutation_importance.md/.csv`, and `results/permutation_importance_by_group.md/.csv`.
+- ✅ Created `config/biraffe2/batch_permutation_setups.yaml` to run permutation analysis on all 16 previously executed setups with all CPU cores via `scripts/run_batch_from_config.py`.
+- ✅ Completed the full permutation batch (16/16 configs, 0 failures) and regenerated `results/biraffe2/ablation_comparison.md/.csv`, `results/biraffe2/permutation_importance.md/.csv`, and `results/biraffe2/permutation_importance_by_group.md/.csv`.
 
 ## Unified To-Do List — Cover All Supervisor Comments + Missing Setups
 
@@ -150,14 +150,14 @@ Status key: ✅ done / 🔄 partially done / ❌ not done.
 
 | # | Task | Why | Status | What exactly needs to be done |
 |---|------|-----|--------|------------------------------|
-| 8 | Ablation comparison table script | Thesis overview | ✅ Done | `scripts/build_ablation_table.py` writes `results/ablation_comparison.md` and `.csv` |
+| 8 | Ablation comparison table script | Thesis overview | ✅ Done | `scripts/build_ablation_table.py` writes `results/biraffe2/ablation_comparison.md` and `.csv` |
 | 9 | Visualisations | Thesis quality | ❌ Not done | Confusion matrices, feature importance plots, learning curves |
 | 10 | Document baseline-length limitations | Methodology clarity | ❌ Not done | Add section in GLOSSARY/SETUP docs explaining 60s HRV and EEG baseline limits |
 
 ## What still needs to be done (legacy grouped view)
 
 ### Immediate (next coding session)
-1. ✅ Verify outputs in `results/setup_01_biraffe2_ecg_baseline/`.
+1. ✅ Verify outputs in `results/biraffe2/setup_01_biraffe2_ecg_baseline/`.
 2. ✅ Created averaged-levels config `setup_01_biraffe2_ecg_baseline_avg_levels.yaml`.
 3. ✅ Updated README, GLOSSARY_AND_METHODOLOGY, and GEQ_ITEMS docs.
 4. ✅ Ran `setup_01_biraffe2_ecg_baseline_avg_levels.yaml` and compared with single-level Setup 01.

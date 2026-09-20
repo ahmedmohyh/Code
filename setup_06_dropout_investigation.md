@@ -1,7 +1,7 @@
 # Setup 06 Pseudo-Subject Dropout Investigation
 
 ## Setup
-- **Config**: `config/setup_06_full_multimodal.yaml`
+- **Config**: `config/biraffe2/normal_configs/setup_06_full_multimodal.yaml`
 - **Modalities**: ECG + EDA + FACE
 - **Subject mode**: `treat_levels_as_subjects: true`
 - **Score columns**: GEQ-1-FLOW-2018, GEQ-2-FLOW-2018, GEQ-3-FLOW-2018 (3 levels)

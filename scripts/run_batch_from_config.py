@@ -5,8 +5,8 @@ The batch YAML has the following structure:
     batch_name: "my_batch"
     n_jobs: 10
     configs:
-      - "config/setup_01.yaml"
-      - "config/setup_02.yaml"
+      - "config/biraffe2/normal_configs/setup_01.yaml"
+      - "config/biraffe2/normal_configs/setup_02.yaml"
 
 Each config is run sequentially. If one fails, the script records the failure
 and continues with the remaining configs, then exits with code 1.
@@ -73,7 +73,7 @@ def read_subject_auc(root: Path, experiment_name: str) -> dict:
 
 
 def _progress_path(root: Path, batch_name: str) -> Path:
-    return root / "results" / f".{batch_name}_progress.json"
+    return root / "cache" / "batch_progress" / f".{batch_name}_progress.json"
 
 
 def _load_progress(path: Path) -> set:

@@ -1,11 +1,11 @@
 """Build a side-by-side comparison of equal-split vs. real-level-timestamp setups.
 
-Reads `results/ablation_comparison.csv` (equal split) and
-`results/ablation_comparison_real_level_times.csv`, matches experiments by
+Reads `results/biraffe2/ablation_comparison.csv` (equal split) and
+`results/biraffe2/ablation_comparison_real_level_times.csv`, matches experiments by
 base name, and writes:
 
-- results/equal_vs_real_level_times.md
-- results/equal_vs_real_level_times.csv
+- results/biraffe2/equal_vs_real_level_times.md
+- results/biraffe2/equal_vs_real_level_times.csv
 
 The higher AUC in each row is bolded.
 
@@ -15,7 +15,7 @@ Usage:
 import csv
 from pathlib import Path
 
-RESULTS_DIR = Path("results")
+RESULTS_DIR = Path("results") / "biraffe2"
 OUTPUT_MD = RESULTS_DIR / "equal_vs_real_level_times.md"
 OUTPUT_CSV = RESULTS_DIR / "equal_vs_real_level_times.csv"
 

@@ -6,7 +6,7 @@ function, when you run the baseline Setup 01.
 ## Command
 
 ```bash
-python scripts/run_experiment_fast.py --config config/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
+python scripts/run_experiment_fast.py --config config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml --n-jobs -1
 ```
 
 ## Overview
@@ -48,7 +48,7 @@ save_results()                   [flow_lol/reporting/ablation_table.py]
 **File:** `scripts/run_experiment_fast.py`  
 **Function:** `main()`
 
-- Reads `config/setup_01_biraffe2_ecg_baseline.yaml`.
+- Reads `config/biraffe2/normal_configs/setup_01_biraffe2_ecg_baseline.yaml`.
 - Calls `load_config()` from `flow_lol/utils/config.py`.
 - Builds a Python dataclass `Config` containing all settings: dataset, label,
   preprocessing, segmentation, features, models, validation.
@@ -285,7 +285,7 @@ Subject-level: Accuracy=0.394 F1=0.376 AUC=0.336 n=99
 Then `save_results()` from `flow_lol/reporting/ablation_table.py` writes:
 
 ```text
-results/setup_01_biraffe2_ecg_baseline/
+results/biraffe2/setup_01_biraffe2_ecg_baseline/
 ├── results.json
 └── config.yaml
 ```

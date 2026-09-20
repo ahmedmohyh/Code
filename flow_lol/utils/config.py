@@ -36,6 +36,9 @@ class DatasetConfig:
     # When provided, the loader reads per-subject per-level Log.json files and uses
     # the real level start/end timestamps instead of splitting the GAME phase evenly.
     games_zip_path: str = ""
+    # Optional path to a non-BIRAFFE2 dataset archive. For Irshad/PhySF this is
+    # the zip file containing per-subject CSV files (e.g. PhySF.zip).
+    external_zip_path: str = ""
 
 
 @dataclass
@@ -71,8 +74,14 @@ class ECGFeatureConfig:
 
 
 @dataclass
+class EEGFeatureConfig:
+    bands: List[str] = field(default_factory=lambda: ["theta", "alpha", "beta"])
+
+
+@dataclass
 class FeaturesConfig:
     ecg: ECGFeatureConfig = field(default_factory=ECGFeatureConfig)
+    eeg: EEGFeatureConfig = field(default_factory=EEGFeatureConfig)
     package: str = "neurokit2"
 
 

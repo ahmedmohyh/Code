@@ -1,32 +1,29 @@
-# Base configuration for the Flow-LoL pipeline.
-# Copy and modify this file for each ablation setup.
+# Irshad/PhySF setup using only ECG (no EDA, no EEG).
+# 25 subjects, 128 Hz, binary labels derived from filename (flow / no_flow).
+# Adjust dataset.path to the actual location of PhySF.zip on your machine.
 
-experiment_name: "setup_08_irshad_physf"
+experiment_name: "setup_08b_irshad_physf_ecg_only"
 seed: 42
 
 dataset:
   name: "Irshad_PhySF"
-  path: "../dataset/data/irshad_physf/PLACEHOLDER.zip"
-  metadata_path: "../dataset/data/irshad_physf/metadata.csv"
+  path: "C:\\Users\\user\\Downloads\\Masterthesis\\dataset\\data\\PhySF.zip"
   modalities:
     - "ECG"
-    - "EDA"
-    - "EEG"
-  score_column: "GEQ-1-FLOW-2018"
 
 label:
-  method: "median_split"
+  method: "filename"
   margin: 0.0
   items: "full_subscale"
   classes:
-    - "low"
-    - "high"
+    - "no_flow"
+    - "flow"
 
 preprocessing:
   cleaning_package: "neurokit2"
   z_standardise: true
   outlier_strategy: "train_only"
-  baseline_correction: "change_score"
+  baseline_correction: "none"
   baseline_length_s: 60
 
 segmentation:
@@ -50,16 +47,28 @@ features:
       - "sample_entropy"
       - "DFA_alpha1"
       - "DFA_alpha2"
+  eeg:
+    bands:
+      - "theta"
+      - "alpha"
+      - "beta"
   package: "neurokit2"
 
 models:
   classical:
     - "RandomForest"
-  deep: []
+    - "SVM"
+    - "kNN"
+    - "LogisticRegression"
+    - "XGBoost"
+  deep:
+    - "MLP"
+    - "LSTM"
+    - "CNN1D"
 
 validation:
   strategy: "LOSO"
-  permutation: false
+  permutation: true
   metrics:
     - "accuracy"
     - "f1_macro"

@@ -16,9 +16,11 @@ results/*
 *.pth
 *.joblib
 
-# Keep generated markdown result tables in version control
+# Keep generated result tables in version control
 !results/*.md
 !results/**/*.md
+!results/*.csv
+!results/**/*.csv
 
 # Logs
 logs/

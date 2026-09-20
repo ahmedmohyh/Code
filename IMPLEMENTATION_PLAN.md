@@ -31,9 +31,15 @@ Design the code as **modular stages**, where each stage reads a config object an
 
 ```text
 config/                      <-- one YAML file per ablation run
-├── base.yaml
-├── ablation_label_margin.yaml
-├── ablation_no_zscore.yaml
+├── biraffe2/
+│   ├── normal_configs/
+│   │   ├── base.yaml
+│   │   ├── ablation_label_margin.yaml
+│   │   └── ablation_no_zscore.yaml
+│   └── real_level_configs/
+│       └── ...
+├── irshad/
+│   └── ...
 └── ...
 
 flow_lol/                    <-- main package
@@ -197,7 +203,7 @@ Build the simplest complete pipeline first, then add ablations.
 1. **M0: Project skeleton**
    - Git init
    - `requirements.txt`
-   - `config/base.yaml`
+   - `config/biraffe2/normal_configs/base.yaml`
    - `flow_lol/` package with empty modules
 
 2. **M1: BIRAFFE2 ECG-only baseline**
@@ -232,7 +238,7 @@ Build the simplest complete pipeline first, then add ablations.
 ## 5. Config Example
 
 ```yaml
-# config/base.yaml
+# config/biraffe2/normal_configs/base.yaml
 experiment_name: "biraffe2_ecg_only_baseline"
 
 seed: 42
@@ -286,8 +292,11 @@ C:\Users\user\Downloads\Masterthesis\Code
 ├── requirements.txt
 ├── environment.yml
 ├── config/
-│   ├── base.yaml
-│   └── ablations/
+│   ├── biraffe2/
+│   │   ├── normal_configs/
+│   │   │   └── base.yaml
+│   │   └── real_level_configs/
+│   └── irshad/
 ├── flow_lol/
 │   ├── __init__.py
 │   ├── data/
@@ -315,7 +324,7 @@ C:\Users\user\Downloads\Masterthesis\Code
 
 1. Every run is fully determined by a config file.
 2. Config name becomes the run ID.
-3. Results are saved as `results/<run_id>/metrics.json` + `predictions.csv`.
+3. Results are saved as `results/biraffe2/<run_id>/metrics.json` + `predictions.csv` for BIRAFFE2, or `results/irshad/<run_id>/metrics.json` + `predictions.csv` for Irshad/PhySF.
 4. Raw data are **never** committed; only paths are stored in configs.
 5. Models are retrained from scratch each run; no saved checkpoints in git.
 6. LOSO folds are deterministic by subject ID, not random.
