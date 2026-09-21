@@ -43,8 +43,7 @@ features:
   package: "heartpy"
 
 models:
-  classical:
-    - "RandomForest"
+  classical: []
   deep:
     - "MLP"
     - "LSTM"

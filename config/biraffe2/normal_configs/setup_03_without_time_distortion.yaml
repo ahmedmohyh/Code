@@ -61,8 +61,7 @@ features:
   package: "neurokit2"
 
 models:
-  classical:
-    - "RandomForest"
+  classical: []
   deep:
     - "MLP"
     - "LSTM"

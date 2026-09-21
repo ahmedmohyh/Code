@@ -59,12 +59,7 @@ features:
   package: "neurokit2"
 
 models:
-  classical:
-    - "RandomForest"
-    - "SVM"
-    - "kNN"
-    - "LogisticRegression"
-    - "XGBoost"
+  classical: []
   deep:
     - "MLP"
     - "LSTM"

@@ -51,14 +51,11 @@ features:
   package: "neurokit2"
 
 models:
-  classical:
-    - "RandomForest"
-    - "SVM"
-    - "kNN"
-    - "XGBoost"
+  classical: []
   deep:
+    - "MLP"
     - "LSTM"
-
+    - "CNN1D"
 validation:
   strategy: "LOSO"
   permutation: false

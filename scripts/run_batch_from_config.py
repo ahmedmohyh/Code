@@ -45,30 +45,39 @@ def run_single(config_path: str, n_jobs: int, root: Path) -> bool:
 
 def read_subject_auc(root: Path, experiment_name: str) -> dict:
     """Try to read the subject-level AUC from the results JSON."""
-    results_dir = root / "results" / experiment_name
-    for filename in ("metrics.json", "results.json"):
-        path = results_dir / filename
-        if not path.exists():
-            continue
-        try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            models = data.get("models", data)
-            for model_name, model_data in models.items():
-                if not isinstance(model_data, dict):
-                    continue
-                sub = model_data.get("subject_aggregate", {})
-                if sub:
-                    return {
-                        "model": model_name,
-                        "accuracy": sub.get("accuracy"),
-                        "f1_macro": sub.get("f1_macro"),
-                        "auc": sub.get("auc"),
-                        "n": sub.get("n_subjects_used"),
-                    }
-            return {}
-        except Exception:
-            continue
+    candidate_dirs = [
+        root / "results" / "irshad" / experiment_name,
+        root / "results" / "biraffe2" / experiment_name,
+        root / "results" / experiment_name,
+    ]
+    for results_dir in candidate_dirs:
+        for filename in ("metrics.json", "results.json"):
+            path = results_dir / filename
+            if not path.exists():
+                continue
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                models = data.get("models", data)
+                best = None
+                for model_name, model_data in models.items():
+                    if not isinstance(model_data, dict):
+                        continue
+                    sub = model_data.get("subject_aggregate", {})
+                    auc = sub.get("auc")
+                    if auc is None:
+                        continue
+                    if best is None or auc > best.get("auc", -1):
+                        best = {
+                            "model": model_name,
+                            "accuracy": sub.get("accuracy"),
+                            "f1_macro": sub.get("f1_macro"),
+                            "auc": auc,
+                            "n": sub.get("n_subjects_used"),
+                        }
+                return best or {}
+            except Exception:
+                continue
     return {}
 
 

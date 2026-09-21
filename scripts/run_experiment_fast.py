@@ -612,8 +612,17 @@ def run(config: Config, n_jobs: int = -1):
         print(f"\nRunning LOSO CV for deep model {model_name}")
 
         def deep_builder(name=model_name, n=n_features):
-            return build_deep_classifier(name, n_features=n, random_state=config.seed)
+            return build_deep_classifier(
+                name,
+                n_features=n,
+                random_state=config.seed,
+                max_epochs=25,      # faster convergence on small LOSO folds
+                batch_size=128,     # better GPU saturation
+            )
 
+        # Two fold workers keep the GPU busy while the other prepares data.
+        # Models are tiny (~tens of thousands of params) so an 8 GB GPU
+        # can comfortably hold two concurrent training contexts.
         cv_results = run_loso_cv(
             X_by_subject, y_by_subject,
             model_builder=deep_builder,
@@ -622,7 +631,7 @@ def run(config: Config, n_jobs: int = -1):
             run_permutation=config.validation.permutation,
             feature_names=feature_names,
             random_state=config.seed,
-            n_jobs=1,  # PyTorch models train on GPU/CPU; avoid fold-level parallelism
+            n_jobs=2,
         )
         results_all[model_name] = cv_results
         agg = cv_results["aggregate"]
