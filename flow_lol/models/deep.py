@@ -1,4 +1,5 @@
 """Deep-learning classifier interface (PyTorch)."""
+import sys
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -18,7 +19,7 @@ class DeepClassifierWrapper(BaseEstimator, ClassifierMixin):
     def __init__(self, model_name: str = "MLP", n_features: int = 10,
                  n_classes: int = 2, max_epochs: int = 25, batch_size: int = 128,
                  lr: float = 1e-3, random_state: int = 42,
-                 pin_memory: bool = True, compile_model: bool = True):
+                 pin_memory: bool = False, compile_model: bool = False):
         self.model_name = model_name
         self.n_features = n_features
         self.n_classes = n_classes
@@ -57,7 +58,10 @@ class DeepClassifierWrapper(BaseEstimator, ClassifierMixin):
         else:
             raise ValueError(f"Unknown deep model: {self.model_name}")
 
-        if self.compile_model and hasattr(torch, "compile") and self.device.type == "cuda":
+        # torch.compile is disabled by default on Windows because the required
+        # Triton backend is often missing; eager mode is safer and fast enough
+        # for the tiny networks used in this LOSO pipeline.
+        if self.compile_model and hasattr(torch, "compile") and self.device.type == "cuda" and sys.platform != "win32":
             try:
                 self.model_ = torch.compile(self.model_)
             except Exception:
