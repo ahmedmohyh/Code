@@ -1,0 +1,74 @@
+# Grid search for setup_08_irshad_physf.
+# Classical classifiers only; deep models excluded.
+
+experiment_name: "setup_08_irshad_physf_grid_search"
+seed: 42
+
+dataset:
+  name: "Irshad_PhySF"
+  path: "C:\\Users\\user\\Downloads\\Masterthesis\\dataset\\data\\PhySF.zip"
+  modalities:
+    - "ECG"
+    - "EDA"
+    - "EEG"
+
+label:
+  method: "filename"
+  margin: 0.0
+  items: "full_subscale"
+  classes:
+    - "no_flow"
+    - "flow"
+
+preprocessing:
+  cleaning_package: "neurokit2"
+  z_standardise: true
+  outlier_strategy: "train_only"
+  baseline_correction: "none"
+  baseline_length_s: 60
+
+segmentation:
+  window_length_s: 60
+  step_s: 30
+
+features:
+  ecg:
+    time:
+      - "hr_mean"
+      - "SDNN"
+      - "RMSSD"
+      - "pNN50"
+    frequency:
+      - "VLF"
+      - "LF"
+      - "HF"
+      - "LF_HF"
+      - "TP"
+    nonlinear:
+      - "sample_entropy"
+      - "DFA_alpha1"
+      - "DFA_alpha2"
+  eeg:
+    bands:
+      - "theta"
+      - "alpha"
+      - "beta"
+  package: "neurokit2"
+
+models:
+  classical:
+    - "RandomForest"
+  deep: []
+
+validation:
+  strategy: "LOSO"
+  permutation: false
+  metrics:
+    - "accuracy"
+    - "f1_macro"
+    - "precision_low"
+    - "recall_low"
+    - "precision_high"
+    - "recall_high"
+    - "auc"
+    - "inference_ms"

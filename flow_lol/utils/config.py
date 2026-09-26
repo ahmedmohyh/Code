@@ -45,6 +45,8 @@ class DatasetConfig:
 class LabelConfig:
     method: str = "median_split"
     margin: float = 0.0
+    percentile_low: float = 0.20
+    percentile_high: float = 0.80
     items: str = "full_subscale"
     classes: List[str] = field(default_factory=lambda: ["low", "high"])
 

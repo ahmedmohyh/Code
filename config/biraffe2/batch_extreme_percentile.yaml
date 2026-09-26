@@ -1,0 +1,44 @@
+# Batch config for BIRAFFE2 extreme percentile labeling (bottom 20 % vs. top 20 %).
+# Run with: python scripts/run_batch_from_config.py --batch config/biraffe2/batch_extreme_percentile.yaml
+
+batch_name: "biraffe2_extreme_percentile"
+n_jobs: -1
+
+configs:
+  # Normal timestamps
+  - config/biraffe2/extreme_percentile_configs/setup_01_biraffe2_ecg_baseline_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01_biraffe2_ecg_baseline_avg_levels_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01c_biraffe2_ecg_levels_as_subjects_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01d_drop_unreliable_60s_features_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01e_per_subject_normalization_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01f_shorter_step_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01g_levels_as_subjects_per_subject_norm_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_02_label_margin_01_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_03_without_time_distortion_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_04_no_zscore_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_05_no_outlier_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_06_full_multimodal_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_07_5min_window_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_09_heartpy_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_10_all_models_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_11_raw_geq_without_time_distortion_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_12_biraffe2_baseline_correction_extreme_percentile.yaml
+
+  # Real level timestamps
+  - config/biraffe2/extreme_percentile_configs/setup_01_biraffe2_ecg_baseline_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01_biraffe2_ecg_baseline_avg_levels_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01c_biraffe2_ecg_levels_as_subjects_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01d_biraffe2_ecg_levels_as_subjects_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01d_drop_unreliable_60s_features_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01e_per_subject_normalization_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01f_shorter_step_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_01g_levels_as_subjects_per_subject_norm_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_02_label_margin_01_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_03_without_time_distortion_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_04_no_zscore_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_05_no_outlier_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_06_full_multimodal_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_07_5min_window_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_09_heartpy_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_11_raw_geq_without_time_distortion_real_level_times_extreme_percentile.yaml
+  - config/biraffe2/extreme_percentile_configs/setup_12_biraffe2_baseline_correction_real_level_times_extreme_percentile.yaml

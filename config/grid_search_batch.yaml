@@ -1,0 +1,10 @@
+# Batch config for the 4 grid-search experiments.
+# Run with: python scripts/run_grid_search.py --batch config/grid_search_batch.yaml
+
+n_jobs: -1
+
+checkpoints:
+  - config/biraffe2/grid_search/setup_12_biraffe2_baseline_correction_grid_search.yaml
+  - config/biraffe2/grid_search/setup_06_full_multimodal_grid_search.yaml
+  - config/biraffe2/grid_search/setup_11_raw_geq_without_time_distortion_grid_search.yaml
+  - config/irshad/grid_search/setup_08_irshad_physf_grid_search.yaml

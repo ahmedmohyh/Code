@@ -1,0 +1,62 @@
+experiment_name: setup_01_biraffe2_ecg_baseline_extreme_percentile
+seed: 42
+dataset:
+  name: BIRAFFE2
+  path: ../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-biosigs.zip
+  metadata_path: ../dataset/data/BIRAFFE2/Version 2/BIRAFFE2-metadata.csv
+  modalities:
+  - ECG
+  score_column: GEQ-1-FLOW-2018
+label:
+  method: extreme_percentile
+  percentile_low: 0.2
+  percentile_high: 0.8
+  items: full_subscale
+  classes:
+  - low
+  - high
+preprocessing:
+  cleaning_package: neurokit2
+  z_standardise: true
+  outlier_strategy: train_only
+  baseline_correction: none
+  baseline_length_s: 60
+segmentation:
+  window_length_s: 60
+  step_s: 30
+features:
+  ecg:
+    time:
+    - hr_mean
+    - SDNN
+    - RMSSD
+    - pNN50
+    frequency:
+    - VLF
+    - LF
+    - HF
+    - LF_HF
+    - TP
+    nonlinear:
+    - sample_entropy
+    - DFA_alpha1
+    - DFA_alpha2
+  package: neurokit2
+models:
+  classical: []
+  deep:
+  - MLP
+  - LSTM
+  - CNN1D
+validation:
+  strategy: LOSO
+  permutation: false
+  metrics:
+  - accuracy
+  - f1_macro
+  - precision_low
+  - recall_low
+  - precision_high
+  - recall_high
+  - auc
+  - inference_ms
