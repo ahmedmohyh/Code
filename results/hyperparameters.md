@@ -37,27 +37,3 @@ setup unless the config overrides them (currently none do).
 | | `random_state` | 42 | Reproducible random seed |
 | | `n_jobs` | -1 | Use all CPU cores |
 
-## Notes
-
-- We use **fixed hyperparameters**, not a search grid. This keeps the comparison
-  fair across setups, but it means we do not tune per setup.
-- `class_weight="balanced"` is used for all models that support it to mitigate
-  the slight class imbalance in the label columns.
-- No deep-learning model is currently used in the main ablation runs. Setup 10
-  includes an LSTM, but the classical results reported to the supervisor use the
-  table above.
-
-## What could be improved
-
-For the final thesis, the supervisor may ask for a **hyperparameter search**
-(e.g. grid search or randomized search). This would try combinations such as:
-
-- RandomForest: `n_estimators` ∈ {100, 200, 500}, `max_depth` ∈ {None, 10, 20}
-- SVM: `C` ∈ {0.1, 1, 10}, `kernel` ∈ {"linear", "rbf"}
-- kNN: `n_neighbors` ∈ {3, 5, 7, 11}
-- LogisticRegression: `C` ∈ {0.1, 1, 10}
-- XGBoost: `n_estimators` ∈ {100, 200}, `max_depth` ∈ {3, 4, 6}, `learning_rate` ∈ {0.01, 0.05, 0.1}
-
-A search would be done **inside each LOSO fold on the training data only**,
-using e.g. inner cross-validation, so that hyperparameter choice does not leak
-information from the test subject.
