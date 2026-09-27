@@ -1,6 +1,6 @@
 # Flow-LoL: Glossary and Methodology Notes
 
-This document explains the key machine-learning and signal-processing concepts used in the Flow-LoL pipeline. It is meant as a quick reference while reading the code or writing the thesis.
+This document explains the key machine-learning and signal-processing concepts used in the Flow-LoL pipeline. It is meant as a quick reference while reading the code, editing YAML configs, or writing the thesis.
 
 ---
 
@@ -40,7 +40,7 @@ For Setup 01c this means N=3 (`GEQ-1-FLOW-2018`, `GEQ-2-FLOW-2018`,
 `GEQ-3-FLOW-2018`). Setup 01g uses N=6 by adding the three GEQ 2013 Flow scores.
 Setups 03 and 11 also use N=3, but the scores are recomputed from raw items
 excluding item 25. Setup 12 uses N=3 with baseline correction from the resting
-segment and achieved AUC 0.691, the best result so far.
+segment and achieved the best result so far (see Section 4).
 
 Pseudo-subject IDs are encoded as `real_id * 1000 + level_index`, e.g. subject 103
 level 1 becomes `103001`. The factor 1000 supports up to 999 levels per subject.
@@ -204,22 +204,256 @@ their momentary flow state, the model learns person-specific patterns instead of
 flow-specific patterns. LOSO cross-validation is designed to prevent this, but if the
 flow signal is weak, the model still struggles to generalise.
 
-### Z-standardisation
-Scaling each feature to zero mean and unit variance, fitted on the training fold and applied to the test fold. Prevents features with large scales from dominating the model.
+---
 
-### Outlier handling
-Removing windows whose feature values fall far outside the inter-quartile range. Strategies:
+## 5. Complete config option reference
 
-- `none`: keep everything.
-- `train_only`: compute thresholds on the training fold only (safe).
-- `full_data`: compute thresholds on train + test (information leakage; only for sensitivity checks).
+This section documents every option that can appear in the YAML experiment configs. Use it when creating new setups or interpreting existing results.
 
-### Baseline correction
-Subtracting or dividing by a resting/baseline segment to remove individual physiological differences. Not used in Setup 01. Implemented in Setup 12 via the BIRAFFE2 `BASELINE START` / `BASELINE END` events; change-score correction (`window − baseline`) produced AUC 0.691, the best result so far.
+### 5.1 `dataset`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `name` | `"BIRAFFE2"`, `"Irshad_PhySF"` | Which loader and dataset format to use. |
+| `path` | path to dataset root | Root folder (BIRAFFE2) or zip archive (PhySF). |
+| `modalities` | `["ECG"]`, `["ECG", "EDA", "EEG"]` | Which biosignals are extracted. Adding a modality adds features but can reduce `n` if the signal is missing or unusable. |
+| `treat_levels_as_subjects` | `true` / `false` | In BIRAFFE2, expand each real subject into up to N pseudo-subjects, one per game level. |
+| `procedure_path` | path | Folder with BIRAFFE2 procedure files that mark `GAME START`, `GAME END`, `BASELINE START`, etc. |
+| `raw_geq_dir` | path | Folder containing raw GEQ item CSVs (Version 2). Used when `recompute_flow_from_items` is `true`. |
+| `recompute_flow_from_items` | `true` / `false` | Recompute the Flow score from raw item responses instead of using the pre-aggregated metadata column. |
+| `exclude_time_distortion` | `true` / `false` | When recomputing the Flow score, drop item 25 (Time Distortion) and use only items 5, 13, 28, 31. |
+| `raw_geq_levels` | `[1, 2, 3]` | Which GEQ levels to include when `recompute_flow_from_items` is `true`. |
+| `games_zip_path` | path to `BIRAFFE2-games.zip` | Read real level start/end times from game logs instead of splitting the GAME phase equally. |
+| `face_zip_path` | path to `BIRAFFE2-photo.zip` | Read pre-computed affect CSVs if `FACE` / `WEBCAM` is in `modalities`. |
+| `external_zip_path` | path to `PhySF.zip` | Alternative to `path` for the Irshad/PhySF zip archive. |
+
+### 5.2 `label`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `method` | `"median_split"`, `"extreme_percentile"`, `"filename"` | How continuous flow scores (or filename labels) are turned into binary classes. |
+| `margin` | `0.0`, `0.25`, `0.5` | Exclusion band around the decision boundary, expressed as a fraction of the IQR. Only scores outside the band are kept. |
+| `percentile_low` | `0.20` | Lower percentile for `extreme_percentile`. Scores ≤ this percentile are labeled low flow. |
+| `percentile_high` | `0.80` | Upper percentile for `extreme_percentile`. Scores ≥ this percentile are labeled high flow. |
+| `items` | `"full_subscale"`, `"without_time_distortion"` | Which GEQ items are used to build the Flow score. |
+| `classes` | `["low", "high"]` | Names of the two output classes. |
+
+#### `method: median_split`
+
+Computes the median of all available flow scores and splits:
+
+- `score ≤ median` → low flow (`0`)
+- `score > median` → high flow (`1`)
+
+With `margin > 0`, an exclusion band is added around the median:
+
+```text
+low_threshold  = median - margin * IQR
+high_threshold = median + margin * IQR
+excluded       = scores between low_threshold and high_threshold
+```
+
+Example: median = 3.5, IQR = 2.0, margin = 0.25
+```text
+low  = score ≤ 3.0
+high = score ≥ 4.0
+excluded = 3.0 < score < 4.0
+```
+
+#### `method: extreme_percentile`
+
+Keeps only the most extreme subjects:
+
+- `score ≤ percentile_low` (e.g. bottom 20 %) → low flow
+- `score ≥ percentile_high` (e.g. top 20 %) → high flow
+- everything in between → excluded
+
+Example: `percentile_low = 0.20`, `percentile_high = 0.80`
+```text
+Bottom 20 % of scores → low flow
+Top 20 % of scores    → high flow
+Middle 60 %           → excluded
+```
+
+The goal is to reduce label noise by removing ambiguous, middle-range flow scores.
+
+#### `method: filename`
+
+Used for Irshad/PhySF. The label is derived directly from the filename:
+
+- `s<id>_flow.csv` → high flow (`1`)
+- `s<id>_no_flow.csv` → low flow (`0`)
+
+`margin` has no effect here because the labels are already binary.
+
+### 5.3 `preprocessing`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `cleaning_package` | `"neurokit2"`, `"heartpy"`, `"biosppy"` | Which library cleans/filters ECG and EDA signals. |
+| `z_standardise` | `true` / `false` | Standardize features to zero mean and unit variance inside each LOSO fold (fitted on train, applied to test). |
+| `per_subject_normalize` | `true` / `false` | Normalize each subject's windows independently before LOSO, using that subject's own mean and std. |
+| `outlier_strategy` | `"none"`, `"train_only"`, `"full_data"` | How/whether to remove windows with extreme feature values using IQR-based bounds. |
+| `baseline_correction` | `"none"`, `"change_score"`, `"quotient"` | How to remove resting-baseline physiology from the game-phase features. |
+| `baseline_length_s` | `60` | Maximum seconds of baseline signal used for correction. |
+| `baseline_from_procedure` | `true` / `false` | Use exact `BASELINE START` / `BASELINE END` events from procedure files. If `false`, use the first `baseline_length_s` seconds. |
+
+#### `cleaning_package`
+
+- **ECG cleaning**: removes noise, baseline wander, and powerline interference so R-peaks can be detected reliably.
+- **EDA cleaning**: decomposes the signal into **tonic** (slow SCL) and **phasic** (fast SCR) components.
+
+The default and most used package is `neurokit2`. `heartpy` is used in Setup 09.
+
+#### `z_standardise`
+
+Inside each LOSO fold:
+
+```text
+mean_train = mean of feature across training windows
+std_train  = std of feature across training windows
+X_train    = (X_train - mean_train) / std_train
+X_test     = (X_test - mean_train) / std_train
+```
+
+Important: the mean and std are learned from the **training fold only** to avoid data leakage.
+
+Models like SVM, kNN, LogisticRegression, and deep networks need this. Tree-based models (RandomForest, XGBoost) are scale-invariant, but z-standardisation still helps numerical stability.
+
+#### `per_subject_normalize`
+
+Before LOSO, for each subject separately:
+
+```text
+X_subject = (X_subject - mean(X_subject)) / std(X_subject)
+```
+
+This removes between-subject differences in absolute physiological levels. The model then learns within-subject deviations rather than absolute values.
+
+This is different from `z_standardise`:
+- `per_subject_normalize`: happens **before** LOSO, per subject.
+- `z_standardise`: happens **inside** each LOSO fold, on training data.
+
+#### `outlier_strategy`
+
+Detects outlier windows using the IQR rule:
+
+```text
+Q1    = 25th percentile of a feature
+Q3    = 75th percentile of a feature
+IQR   = Q3 - Q1
+lower = Q1 - 1.5 * IQR
+upper = Q3 + 1.5 * IQR
+```
+
+A window is kept only if **all** its feature values lie inside `[lower, upper]`.
+
+The `1.5` factor is hardcoded in `flow_lol/preprocessing/outlier_handler.py`. It is configurable in the constructor but not exposed in the YAML configs, so all current experiments use `1.5`.
+
+Strategies:
+
+- `"none"`: keep all windows.
+- `"train_only"`: compute IQR thresholds on the training fold only, then apply them to train and test separately. **This is the safe, default choice** — no data leakage.
+- `"full_data"`: compute thresholds on train + test together, then remove outliers. This can leak test information into preprocessing and is only useful as a sensitivity check.
+
+Practical impact: with many features (e.g. multimodal ECG+EDA+EEG), `outlier_strategy` can drop a large fraction of windows. Setup 06 uses `"none"` because the IQR rule was removing too many windows and causing empty folds.
+
+#### `baseline_correction`
+
+BIRAFFE2 recordings include a resting baseline before the game. This option removes each subject's individual resting physiology from the game-phase features.
+
+- `"none"`: do not apply baseline correction.
+- `"change_score"`: subtract baseline features from game features:
+  ```text
+  X_corrected = X_game - mean(X_baseline)
+  ```
+- `"quotient"`: divide game features by baseline features:
+  ```text
+  X_corrected = X_game / mean(X_baseline)
+  ```
+
+Setup 12 (`biraffe2_baseline_correction`) uses `"change_score"` and is one of the best-performing BIRAFFE2 setups.
+
+#### `baseline_length_s` and `baseline_from_procedure`
+
+- `baseline_length_s`: maximum seconds of baseline to read. If the recorded baseline is shorter, whatever is available is used.
+- `baseline_from_procedure: true`: read the exact `BASELINE START` / `BASELINE END` timestamps from the procedure file.
+- `baseline_from_procedure: false`: assume the baseline starts at recording time 0 and lasts `baseline_length_s` seconds.
+
+Using procedure events is more accurate because the baseline does not always start at time 0.
+
+### 5.4 `segmentation`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `window_length_s` | `60`, `300` | Duration of each analysis window in seconds. |
+| `step_s` | `30`, `150` | How many seconds the window advances between consecutive windows. |
+
+Example: `window_length_s = 60`, `step_s = 30` means 60-second windows overlapping by 30 seconds.
+
+### 5.5 `features`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `ecg.time` | `["hr_mean", "SDNN", "RMSSD", "pNN50"]` | Time-domain HRV features. |
+| `ecg.frequency` | `["VLF", "LF", "HF", "LF_HF", "TP"]` | Frequency-domain HRV features. |
+| `ecg.nonlinear` | `["sample_entropy", "DFA_alpha1", "DFA_alpha2"]` | Nonlinear HRV features. |
+| `eeg.bands` | `["theta", "alpha", "beta"]` | EEG frequency bands for band-power extraction. |
+| `package` | `"neurokit2"`, `"heartpy"` | Which package computes ECG/HRV features. |
+
+### 5.6 `models`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `classical` | `["RandomForest"]`, `["RandomForest", "SVM", "kNN", "LogisticRegression", "XGBoost"]` | Classical scikit-learn / XGBoost classifiers to train. |
+| `deep` | `["MLP", "LSTM", "CNN1D"]` | PyTorch neural-network architectures to train. |
+
+### 5.7 `validation`
+
+| Option | Example values | What it controls |
+|---|---|---|
+| `strategy` | `"LOSO"` | Cross-validation strategy. Currently only LOSO is implemented. |
+| `permutation` | `true` / `false` | Compute permutation feature importance after training. |
+| `metrics` | list of metric names | Which metrics are reported per fold. |
 
 ---
 
-## 5. Model terminology
+## 6. Why `n` differs across setups
+
+The `n` column in the result tables is the number of valid subjects / pseudo-subjects after preprocessing and labeling. It is not always the same because:
+
+1. **Missing data**: some BIRAFFE2 game logs are missing (SUB322 Level 3, SUB668 Levels 2 and 3).
+2. **Label exclusion**: `median_split` with `margin > 0` or `extreme_percentile` drops subjects whose scores fall in the excluded band.
+3. **Feature extraction failure**: a modality may be missing, flat, or too noisy, producing all-NaN features. The subject is then skipped.
+4. **Outlier removal**: if every window of a subject is flagged as an outlier, that subject has `n_test = 0` and is skipped from LOSO.
+5. **Modality requirements**: requiring ECG+EDA+EEG keeps fewer subjects than ECG-only because more signals must be clean.
+
+Example from Irshad/PhySF:
+
+| Setup | Required modalities | n |
+|---|---|---|
+| ECG only | ECG | 25 |
+| ECG + EDA | ECG + EDA | 18 |
+| ECG + EDA + EEG | ECG + EDA + EEG | 9 |
+
+---
+
+## 7. AUC reliability with single-class folds
+
+With `extreme_percentile` labeling, many real subjects can have all their levels labeled the same (all low or all high). When such a subject is the test fold, AUC is undefined (`nan`) because the test set has only one class. The pipeline skips these folds and reports AUC averaged over the remaining folds.
+
+This means AUC may reflect only a subset of subjects (those with mixed labels across levels). To mitigate this limitation, the tables report both **AUC** and **accuracy**:
+
+- AUC is computed from valid subject-level folds.
+- Accuracy is computed across all folds, including single-class folds.
+
+A good critical point for the thesis:
+
+> "Extreme-percentile labeling intentionally removes ambiguous middle-range labels, but it also increases the number of single-class LOSO folds. The reported AUC therefore reflects the subset of subjects with mixed flow labels, while accuracy provides a complementary view across all folds."
+
+---
+
+## 8. Model terminology
 
 ### Random Forest
 An ensemble of decision trees. Each tree votes, and the majority wins.
@@ -228,11 +462,11 @@ An ensemble of decision trees. Each tree votes, and the majority wins.
 Other classical classifiers available in the pipeline.
 
 ### Deep models
-Neural-network architectures (MLP, LSTM, 1D-CNN). These are implemented as stubs and will be wired up for Setup 10.
+Neural-network architectures (MLP, LSTM, 1D-CNN). Implemented as PyTorch wrappers in the pipeline.
 
 ---
 
-## 6. Ablation study
+## 9. Ablation study
 
 An experiment where you change one component at a time to see how much it affects performance. In this project each YAML config file is one ablation setup.
 
@@ -243,21 +477,27 @@ Example ablations:
 - Use 60-second vs. 5-minute windows.
 - Compare ECG-only vs. multimodal features.
 - Treat each BIRAFFE2 level as a separate pseudo-subject.
+- Apply baseline correction vs. no correction.
+- Use extreme-percentile labels vs. median-split labels.
 
 ---
 
-## 7. Files and scripts
+## 10. Files and scripts
 
 - `config/biraffe2/**/*.yaml` — BIRAFFE2 experiment configurations and batch definitions.
 - `config/irshad/**/*.yaml` — Irshad/PhySF experiment configurations and batch definitions.
 - `scripts/run_experiment_fast.py` — parallel runner.
+- `scripts/run_grid_search.py` — grid-search runner for classical classifiers.
 - `flow_lol/validation/loso_cv.py` — LOSO cross-validation.
 - `flow_lol/features/extractors/ecg_features.py` — ECG/HRV feature extraction.
+- `flow_lol/data/labelers/flow_labeler.py` — flow-score labeling logic.
 - `results/biraffe2/<experiment_name>/` — BIRAFFE2 output metrics and config for each run.
 - `results/irshad/<experiment_name>/` — Irshad/PhySF output metrics and config for each run.
+- `results/biraffe2/ablation_comparison.md` — combined BIRAFFE2 results table.
+- `results/irshad/ablation_comparison.md` — combined Irshad/PhySF results table.
 
 ---
 
-## 8. GEQ items and flow-score construction
+## 11. GEQ items and flow-score construction
 
 For the full list of GEQ items, the original 2013 subscale mapping, and the Time Distortion item, see [`GEQ_ITEMS.md`](GEQ_ITEMS.md).
