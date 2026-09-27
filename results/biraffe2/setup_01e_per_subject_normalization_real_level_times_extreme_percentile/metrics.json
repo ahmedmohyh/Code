@@ -1,0 +1,3548 @@
+{
+  "experiment_name": "setup_01e_per_subject_normalization_real_level_times_extreme_percentile",
+  "labeler_description": {
+    "method": "extreme_percentile",
+    "margin": 0.0,
+    "percentile_low": 0.2,
+    "percentile_high": 0.8,
+    "items": "full_subscale",
+    "median": 1.7333333333333334,
+    "iqr": 1.1249999999999998,
+    "low_threshold": 1.7333333333333334,
+    "high_threshold": 1.7333333333333334,
+    "percentile_low_threshold": 1.146666666666667,
+    "percentile_high_threshold": 2.4000000000000004
+  },
+  "feature_names": [
+    "hr_mean",
+    "SDNN",
+    "RMSSD",
+    "pNN50",
+    "VLF",
+    "LF",
+    "HF",
+    "LF_HF",
+    "TP",
+    "sample_entropy",
+    "DFA_alpha1",
+    "DFA_alpha2"
+  ],
+  "models": {
+    "MLP": {
+      "fold_results": [
+        {
+          "accuracy": 0.27956989247311825,
+          "f1_macro": 0.2184873949579832,
+          "precision_low": 1.0,
+          "recall_low": 0.27956989247311825,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              26,
+              67
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0422666697801712,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5524932742118835,
+          "test_subject": 103,
+          "n_train": 3318,
+          "n_test": 93
+        },
+        {
+          "accuracy": 0.20987654320987653,
+          "f1_macro": 0.17346938775510204,
+          "precision_low": 1.0,
+          "recall_low": 0.20987654320987653,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              17,
+              64
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.9651666696299799,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.565622866153717,
+          "test_subject": 119,
+          "n_train": 3338,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.5949367088607594,
+          "f1_macro": 0.373015873015873,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5949367088607594,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              32,
+              47
+            ]
+          ],
+          "inference_ms": 1.3162333319390502,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5345841646194458,
+          "test_subject": 141,
+          "n_train": 3321,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.25925925925925924,
+          "f1_macro": 0.20588235294117646,
+          "precision_low": 1.0,
+          "recall_low": 0.25925925925925924,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              21,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.8734666625969112,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.555892825126648,
+          "test_subject": 148,
+          "n_train": 3330,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.6222222222222222,
+          "f1_macro": 0.3835616438356164,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6222222222222222,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              34,
+              56
+            ]
+          ],
+          "inference_ms": 1.0953333306436737,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5429866313934326,
+          "test_subject": 170,
+          "n_train": 3343,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.6951219512195121,
+          "f1_macro": 0.41007194244604317,
+          "precision_low": 1.0,
+          "recall_low": 0.6951219512195121,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              57,
+              25
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0784333329259728,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.4827529489994049,
+          "test_subject": 181,
+          "n_train": 3358,
+          "n_test": 82
+        },
+        {
+          "accuracy": 0.6962025316455697,
+          "f1_macro": 0.41044776119402987,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6962025316455697,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              24,
+              55
+            ]
+          ],
+          "inference_ms": 0.9008333339200666,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5481858849525452,
+          "test_subject": 200,
+          "n_train": 3324,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.5657894736842105,
+          "f1_macro": 0.36134453781512604,
+          "precision_low": 1.0,
+          "recall_low": 0.5657894736842105,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              43,
+              33
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1650999998285745,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.49095097184181213,
+          "test_subject": 230,
+          "n_train": 3367,
+          "n_test": 76
+        },
+        {
+          "accuracy": 0.7721518987341772,
+          "f1_macro": 0.4357142857142857,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7721518987341772,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              18,
+              61
+            ]
+          ],
+          "inference_ms": 1.2751333342748694,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5628385543823242,
+          "test_subject": 236,
+          "n_train": 3326,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.44155844155844154,
+          "f1_macro": 0.3063063063063063,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.44155844155844154,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              43,
+              34
+            ]
+          ],
+          "inference_ms": 1.916366668107609,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5070511698722839,
+          "test_subject": 246,
+          "n_train": 3348,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.47674418604651164,
+          "f1_macro": 0.3228346456692913,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.47674418604651164,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              45,
+              41
+            ]
+          ],
+          "inference_ms": 1.3279999984661117,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5078036189079285,
+          "test_subject": 249,
+          "n_train": 3351,
+          "n_test": 86
+        },
+        {
+          "accuracy": 0.3561643835616438,
+          "f1_macro": 0.26262626262626265,
+          "precision_low": 1.0,
+          "recall_low": 0.3561643835616438,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              26,
+              47
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2096333327159907,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5385355949401855,
+          "test_subject": 256,
+          "n_train": 3341,
+          "n_test": 73
+        },
+        {
+          "accuracy": 0.3448275862068966,
+          "f1_macro": 0.2564102564102564,
+          "precision_low": 1.0,
+          "recall_low": 0.3448275862068966,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              30,
+              57
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.5224666664532076,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5309750437736511,
+          "test_subject": 275,
+          "n_train": 3326,
+          "n_test": 87
+        },
+        {
+          "accuracy": 0.4666666666666667,
+          "f1_macro": 0.3181818181818182,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4666666666666667,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              48,
+              42
+            ]
+          ],
+          "inference_ms": 1.058066666397887,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5077652335166931,
+          "test_subject": 320,
+          "n_train": 3315,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.3424657534246575,
+          "f1_macro": 0.25510204081632654,
+          "precision_low": 1.0,
+          "recall_low": 0.3424657534246575,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              25,
+              48
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2754666652957287,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5313626527786255,
+          "test_subject": 388,
+          "n_train": 3339,
+          "n_test": 73
+        },
+        {
+          "accuracy": 0.627906976744186,
+          "f1_macro": 0.38571428571428573,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.627906976744186,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              32,
+              54
+            ]
+          ],
+          "inference_ms": 1.597333330816279,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.538174033164978,
+          "test_subject": 391,
+          "n_train": 3326,
+          "n_test": 86
+        },
+        {
+          "accuracy": 0.2289156626506024,
+          "f1_macro": 0.18627450980392157,
+          "precision_low": 1.0,
+          "recall_low": 0.2289156626506024,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              19,
+              64
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2112999999468836,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5886128544807434,
+          "test_subject": 403,
+          "n_train": 3335,
+          "n_test": 83
+        },
+        {
+          "accuracy": 0.4805194805194805,
+          "f1_macro": 0.32456140350877194,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4805194805194805,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              40,
+              37
+            ]
+          ],
+          "inference_ms": 0.851266665752822,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.4913681447505951,
+          "test_subject": 404,
+          "n_train": 3342,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.4266666666666667,
+          "f1_macro": 0.29906542056074764,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4266666666666667,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              43,
+              32
+            ]
+          ],
+          "inference_ms": 0.9828999997504676,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.488857626914978,
+          "test_subject": 407,
+          "n_train": 3343,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.20224719101123595,
+          "f1_macro": 0.16822429906542055,
+          "precision_low": 1.0,
+          "recall_low": 0.20224719101123595,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              18,
+              71
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.7858999985425422,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5951299071311951,
+          "test_subject": 410,
+          "n_train": 3322,
+          "n_test": 89
+        },
+        {
+          "accuracy": 0.3020833333333333,
+          "f1_macro": 0.232,
+          "precision_low": 1.0,
+          "recall_low": 0.3020833333333333,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              29,
+              67
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.7635999985116845,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5421831011772156,
+          "test_subject": 444,
+          "n_train": 3344,
+          "n_test": 96
+        },
+        {
+          "accuracy": 0.2625,
+          "f1_macro": 0.2079207920792079,
+          "precision_low": 1.0,
+          "recall_low": 0.2625,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              21,
+              59
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.8048333329497837,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5681467056274414,
+          "test_subject": 502,
+          "n_train": 3335,
+          "n_test": 80
+        },
+        {
+          "accuracy": 0.4117647058823529,
+          "f1_macro": 0.2916666666666667,
+          "precision_low": 1.0,
+          "recall_low": 0.4117647058823529,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              35,
+              50
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1466666668032606,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5223850607872009,
+          "test_subject": 503,
+          "n_train": 3333,
+          "n_test": 85
+        },
+        {
+          "accuracy": 1.0,
+          "f1_macro": 1.0,
+          "precision_low": 1.0,
+          "recall_low": 1.0,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.7375666633985626,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.47331249713897705,
+          "test_subject": 553,
+          "n_train": 3415,
+          "n_test": 1
+        },
+        {
+          "accuracy": 1.0,
+          "f1_macro": 1.0,
+          "precision_low": 1.0,
+          "recall_low": 1.0,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0644666641989413,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.47331249713897705,
+          "test_subject": 555,
+          "n_train": 3415,
+          "n_test": 1
+        },
+        {
+          "accuracy": 0.0641025641025641,
+          "f1_macro": 0.060240963855421686,
+          "precision_low": 1.0,
+          "recall_low": 0.0641025641025641,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              5,
+              73
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.111700000668255,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.6143806576728821,
+          "test_subject": 556,
+          "n_train": 3336,
+          "n_test": 78
+        },
+        {
+          "accuracy": 0.7037037037037037,
+          "f1_macro": 0.41304347826086957,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7037037037037037,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              24,
+              57
+            ]
+          ],
+          "inference_ms": 1.146500001292831,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5424467921257019,
+          "test_subject": 560,
+          "n_train": 3333,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.5064935064935064,
+          "f1_macro": 0.33620689655172414,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5064935064935064,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              38,
+              39
+            ]
+          ],
+          "inference_ms": 4.555433333734982,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5140690207481384,
+          "test_subject": 576,
+          "n_train": 3327,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.3253012048192771,
+          "f1_macro": 0.24545454545454545,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.3253012048192771,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              56,
+              27
+            ]
+          ],
+          "inference_ms": 1.0309999997843988,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.48640915751457214,
+          "test_subject": 577,
+          "n_train": 3324,
+          "n_test": 83
+        },
+        {
+          "accuracy": 0.6304347826086957,
+          "f1_macro": 0.38666666666666666,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6304347826086957,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              34,
+              58
+            ]
+          ],
+          "inference_ms": 0.8879999998801699,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5350988507270813,
+          "test_subject": 589,
+          "n_train": 3317,
+          "n_test": 92
+        },
+        {
+          "accuracy": 0.25757575757575757,
+          "f1_macro": 0.20481927710843373,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.25757575757575757,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              49,
+              17
+            ]
+          ],
+          "inference_ms": 0.9711333332234062,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.45704466104507446,
+          "test_subject": 603,
+          "n_train": 3350,
+          "n_test": 66
+        },
+        {
+          "accuracy": 0.21052631578947367,
+          "f1_macro": 0.17391304347826086,
+          "precision_low": 1.0,
+          "recall_low": 0.21052631578947367,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              16,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.063833333319053,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5553357005119324,
+          "test_subject": 621,
+          "n_train": 3347,
+          "n_test": 76
+        },
+        {
+          "accuracy": 0.4942528735632184,
+          "f1_macro": 0.33076923076923076,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4942528735632184,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              44,
+              43
+            ]
+          ],
+          "inference_ms": 1.1362666676480633,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5074253082275391,
+          "test_subject": 644,
+          "n_train": 3323,
+          "n_test": 87
+        },
+        {
+          "accuracy": 0.4025974025974026,
+          "f1_macro": 0.28703703703703703,
+          "precision_low": 1.0,
+          "recall_low": 0.4025974025974026,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              31,
+              46
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.027266667127454,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5283501148223877,
+          "test_subject": 653,
+          "n_train": 3335,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.47435897435897434,
+          "f1_macro": 0.3217391304347826,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.47435897435897434,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              41,
+              37
+            ]
+          ],
+          "inference_ms": 0.9933999972417951,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5145488381385803,
+          "test_subject": 676,
+          "n_train": 3348,
+          "n_test": 78
+        },
+        {
+          "accuracy": 0.6,
+          "f1_macro": 0.375,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              32,
+              48
+            ]
+          ],
+          "inference_ms": 0.986166667037954,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5318709015846252,
+          "test_subject": 683,
+          "n_train": 3341,
+          "n_test": 80
+        },
+        {
+          "accuracy": 0.25882352941176473,
+          "f1_macro": 0.205607476635514,
+          "precision_low": 1.0,
+          "recall_low": 0.25882352941176473,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              22,
+              63
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0448999989118117,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5500552654266357,
+          "test_subject": 688,
+          "n_train": 3329,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.56,
+          "f1_macro": 0.358974358974359,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.56,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              33,
+              42
+            ]
+          ],
+          "inference_ms": 1.0394333342749935,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5319888591766357,
+          "test_subject": 790,
+          "n_train": 3337,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.30864197530864196,
+          "f1_macro": 0.2358490566037736,
+          "precision_low": 1.0,
+          "recall_low": 0.30864197530864196,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              25,
+              56
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0176666643625747,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5430859923362732,
+          "test_subject": 797,
+          "n_train": 3335,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.17647058823529413,
+          "f1_macro": 0.15,
+          "precision_low": 1.0,
+          "recall_low": 0.17647058823529413,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              15,
+              70
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.986433333309833,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5856959223747253,
+          "test_subject": 812,
+          "n_train": 3342,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.4888888888888889,
+          "f1_macro": 0.3283582089552239,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4888888888888889,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              46,
+              44
+            ]
+          ],
+          "inference_ms": 1.1557666657608934,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5183035135269165,
+          "test_subject": 817,
+          "n_train": 3349,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.5135135135135135,
+          "f1_macro": 0.3392857142857143,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5135135135135135,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              36,
+              38
+            ]
+          ],
+          "inference_ms": 1.1467000028157297,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.4957871735095978,
+          "test_subject": 829,
+          "n_train": 3343,
+          "n_test": 74
+        },
+        {
+          "accuracy": 0.6133333333333333,
+          "f1_macro": 0.38016528925619836,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6133333333333333,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              29,
+              46
+            ]
+          ],
+          "inference_ms": 1.1028333319700323,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5315027832984924,
+          "test_subject": 900,
+          "n_train": 3340,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.3815789473684211,
+          "f1_macro": 0.2761904761904762,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.3815789473684211,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              47,
+              29
+            ]
+          ],
+          "inference_ms": 1.1482999980216846,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.4736166000366211,
+          "test_subject": 969,
+          "n_train": 3326,
+          "n_test": 76
+        }
+      ],
+      "aggregate": {
+        "accuracy": 0.45538089493758654,
+        "f1_macro": 0.32268647130915346,
+        "precision_low": 0.4772727272727273,
+        "recall_low": 0.17913063889458727,
+        "precision_high": 0.5227272727272727,
+        "recall_high": 0.27625025604299935,
+        "auc": NaN,
+        "mean_inference_ms": 1.170921211682567,
+        "n_subjects": 44,
+        "n_skipped": 0,
+        "n_fit_errors": 0
+      },
+      "subject_aggregate": {
+        "accuracy": 0.36363636363636365,
+        "f1_macro": 0.3418803418803419,
+        "precision_low": 0.26666666666666666,
+        "recall_low": 0.19047619047619047,
+        "precision_high": 0.41379310344827586,
+        "recall_high": 0.5217391304347826,
+        "auc": 0.2857142857142857,
+        "n_subjects_used": 44
+      },
+      "n_subjects": 44
+    },
+    "LSTM": {
+      "fold_results": [
+        {
+          "accuracy": 0.12903225806451613,
+          "f1_macro": 0.11428571428571428,
+          "precision_low": 1.0,
+          "recall_low": 0.12903225806451613,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              12,
+              81
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2255666661076248,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.565481424331665,
+          "test_subject": 103,
+          "n_train": 3318,
+          "n_test": 93
+        },
+        {
+          "accuracy": 0.13580246913580246,
+          "f1_macro": 0.11956521739130435,
+          "precision_low": 1.0,
+          "recall_low": 0.13580246913580246,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              11,
+              70
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1321333343706403,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5651601552963257,
+          "test_subject": 119,
+          "n_train": 3338,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.8227848101265823,
+          "f1_macro": 0.4513888888888889,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.8227848101265823,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              14,
+              65
+            ]
+          ],
+          "inference_ms": 1.0951666627079248,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5601790547370911,
+          "test_subject": 141,
+          "n_train": 3321,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.037037037037037035,
+          "f1_macro": 0.03571428571428571,
+          "precision_low": 1.0,
+          "recall_low": 0.037037037037037035,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              3,
+              78
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1464000005313817,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5663448572158813,
+          "test_subject": 148,
+          "n_train": 3330,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.7888888888888889,
+          "f1_macro": 0.4409937888198758,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7888888888888889,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              19,
+              71
+            ]
+          ],
+          "inference_ms": 0.9776000030493984,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5405181646347046,
+          "test_subject": 170,
+          "n_train": 3343,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.08536585365853659,
+          "f1_macro": 0.07865168539325842,
+          "precision_low": 1.0,
+          "recall_low": 0.08536585365853659,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              7,
+              75
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0049999982584268,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5358060598373413,
+          "test_subject": 181,
+          "n_train": 3358,
+          "n_test": 82
+        },
+        {
+          "accuracy": 0.9620253164556962,
+          "f1_macro": 0.49032258064516127,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.9620253164556962,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              3,
+              76
+            ]
+          ],
+          "inference_ms": 1.2786000006599352,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5696543455123901,
+          "test_subject": 200,
+          "n_train": 3324,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.18421052631578946,
+          "f1_macro": 0.15555555555555556,
+          "precision_low": 1.0,
+          "recall_low": 0.18421052631578946,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              14,
+              62
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0091666651229996,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5356983542442322,
+          "test_subject": 230,
+          "n_train": 3367,
+          "n_test": 76
+        },
+        {
+          "accuracy": 0.7341772151898734,
+          "f1_macro": 0.4233576642335766,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7341772151898734,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              21,
+              58
+            ]
+          ],
+          "inference_ms": 1.1690000004212682,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5437272191047668,
+          "test_subject": 236,
+          "n_train": 3326,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.5974025974025974,
+          "f1_macro": 0.37398373983739835,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5974025974025974,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              31,
+              46
+            ]
+          ],
+          "inference_ms": 1.0762333331513219,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5068372488021851,
+          "test_subject": 246,
+          "n_train": 3348,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.46511627906976744,
+          "f1_macro": 0.31746031746031744,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.46511627906976744,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              46,
+              40
+            ]
+          ],
+          "inference_ms": 1.348199999483768,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5003479719161987,
+          "test_subject": 249,
+          "n_train": 3351,
+          "n_test": 86
+        },
+        {
+          "accuracy": 0.1232876712328767,
+          "f1_macro": 0.10975609756097561,
+          "precision_low": 1.0,
+          "recall_low": 0.1232876712328767,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              9,
+              64
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.9792999965914836,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5651648640632629,
+          "test_subject": 256,
+          "n_train": 3341,
+          "n_test": 73
+        },
+        {
+          "accuracy": 0.26436781609195403,
+          "f1_macro": 0.20909090909090908,
+          "precision_low": 1.0,
+          "recall_low": 0.26436781609195403,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              23,
+              64
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2386666639940813,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5301518440246582,
+          "test_subject": 275,
+          "n_train": 3326,
+          "n_test": 87
+        },
+        {
+          "accuracy": 0.7333333333333333,
+          "f1_macro": 0.4230769230769231,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7333333333333333,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              24,
+              66
+            ]
+          ],
+          "inference_ms": 1.3066000004376594,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5381819605827332,
+          "test_subject": 320,
+          "n_train": 3315,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.1506849315068493,
+          "f1_macro": 0.13095238095238096,
+          "precision_low": 1.0,
+          "recall_low": 0.1506849315068493,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              11,
+              62
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0372666656621732,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5389800667762756,
+          "test_subject": 388,
+          "n_train": 3339,
+          "n_test": 73
+        },
+        {
+          "accuracy": 0.627906976744186,
+          "f1_macro": 0.38571428571428573,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.627906976744186,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              32,
+              54
+            ]
+          ],
+          "inference_ms": 1.1463666669442318,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5233787298202515,
+          "test_subject": 391,
+          "n_train": 3326,
+          "n_test": 86
+        },
+        {
+          "accuracy": 0.12048192771084337,
+          "f1_macro": 0.10752688172043011,
+          "precision_low": 1.0,
+          "recall_low": 0.12048192771084337,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              10,
+              73
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.169866668836524,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5649645924568176,
+          "test_subject": 403,
+          "n_train": 3335,
+          "n_test": 83
+        },
+        {
+          "accuracy": 0.5194805194805194,
+          "f1_macro": 0.3418803418803419,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5194805194805194,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              37,
+              40
+            ]
+          ],
+          "inference_ms": 1.107566664965513,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5000734329223633,
+          "test_subject": 404,
+          "n_train": 3342,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.6933333333333334,
+          "f1_macro": 0.4094488188976378,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6933333333333334,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              23,
+              52
+            ]
+          ],
+          "inference_ms": 0.9813333357063433,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5206415057182312,
+          "test_subject": 407,
+          "n_train": 3343,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.20224719101123595,
+          "f1_macro": 0.16822429906542055,
+          "precision_low": 1.0,
+          "recall_low": 0.20224719101123595,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              18,
+              71
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.134800001940069,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5804318785667419,
+          "test_subject": 410,
+          "n_train": 3322,
+          "n_test": 89
+        },
+        {
+          "accuracy": 0.041666666666666664,
+          "f1_macro": 0.04,
+          "precision_low": 1.0,
+          "recall_low": 0.041666666666666664,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              4,
+              92
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1812333323177882,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5669612884521484,
+          "test_subject": 444,
+          "n_train": 3344,
+          "n_test": 96
+        },
+        {
+          "accuracy": 0.1,
+          "f1_macro": 0.09090909090909091,
+          "precision_low": 1.0,
+          "recall_low": 0.1,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              8,
+              72
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1640333347410585,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5700206160545349,
+          "test_subject": 502,
+          "n_train": 3335,
+          "n_test": 80
+        },
+        {
+          "accuracy": 0.24705882352941178,
+          "f1_macro": 0.19811320754716982,
+          "precision_low": 1.0,
+          "recall_low": 0.24705882352941178,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              21,
+              64
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.043900000998595,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.529988706111908,
+          "test_subject": 503,
+          "n_train": 3333,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.0,
+          "f1_macro": 0.0,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.9466666694303664,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5269834995269775,
+          "test_subject": 553,
+          "n_train": 3415,
+          "n_test": 1
+        },
+        {
+          "accuracy": 0.0,
+          "f1_macro": 0.0,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              1
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.348199999483768,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5269834995269775,
+          "test_subject": 555,
+          "n_train": 3415,
+          "n_test": 1
+        },
+        {
+          "accuracy": 0.14102564102564102,
+          "f1_macro": 0.12359550561797752,
+          "precision_low": 1.0,
+          "recall_low": 0.14102564102564102,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              11,
+              67
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.9709999988748071,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5602479577064514,
+          "test_subject": 556,
+          "n_train": 3336,
+          "n_test": 78
+        },
+        {
+          "accuracy": 0.7037037037037037,
+          "f1_macro": 0.41304347826086957,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7037037037037037,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              24,
+              57
+            ]
+          ],
+          "inference_ms": 1.047100001111782,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5228581428527832,
+          "test_subject": 560,
+          "n_train": 3333,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.6103896103896104,
+          "f1_macro": 0.3790322580645161,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6103896103896104,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              30,
+              47
+            ]
+          ],
+          "inference_ms": 1.1379333324536371,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5237962007522583,
+          "test_subject": 576,
+          "n_train": 3327,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.6987951807228916,
+          "f1_macro": 0.41134751773049644,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6987951807228916,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              25,
+              58
+            ]
+          ],
+          "inference_ms": 1.1633666678487014,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5237265825271606,
+          "test_subject": 577,
+          "n_train": 3324,
+          "n_test": 83
+        },
+        {
+          "accuracy": 0.717391304347826,
+          "f1_macro": 0.4177215189873418,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.717391304347826,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              26,
+              66
+            ]
+          ],
+          "inference_ms": 1.2162666680524126,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5414919853210449,
+          "test_subject": 589,
+          "n_train": 3317,
+          "n_test": 92
+        },
+        {
+          "accuracy": 0.5454545454545454,
+          "f1_macro": 0.35294117647058826,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5454545454545454,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              30,
+              36
+            ]
+          ],
+          "inference_ms": 1.1723999972067152,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5138761401176453,
+          "test_subject": 603,
+          "n_train": 3350,
+          "n_test": 66
+        },
+        {
+          "accuracy": 0.09210526315789473,
+          "f1_macro": 0.08433734939759036,
+          "precision_low": 1.0,
+          "recall_low": 0.09210526315789473,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              7,
+              69
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.3269333333785955,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5509822964668274,
+          "test_subject": 621,
+          "n_train": 3347,
+          "n_test": 76
+        },
+        {
+          "accuracy": 0.5977011494252874,
+          "f1_macro": 0.37410071942446044,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5977011494252874,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              35,
+              52
+            ]
+          ],
+          "inference_ms": 0.9096000018568399,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5153931975364685,
+          "test_subject": 644,
+          "n_train": 3323,
+          "n_test": 87
+        },
+        {
+          "accuracy": 0.19480519480519481,
+          "f1_macro": 0.16304347826086957,
+          "precision_low": 1.0,
+          "recall_low": 0.19480519480519481,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              15,
+              62
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.0461666679475456,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5384449362754822,
+          "test_subject": 653,
+          "n_train": 3335,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.2564102564102564,
+          "f1_macro": 0.20408163265306123,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.2564102564102564,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              58,
+              20
+            ]
+          ],
+          "inference_ms": 1.1219999990620029,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.49554845690727234,
+          "test_subject": 676,
+          "n_train": 3348,
+          "n_test": 78
+        },
+        {
+          "accuracy": 0.875,
+          "f1_macro": 0.4666666666666667,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.875,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              10,
+              70
+            ]
+          ],
+          "inference_ms": 1.2019666658792023,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5472526550292969,
+          "test_subject": 683,
+          "n_train": 3341,
+          "n_test": 80
+        },
+        {
+          "accuracy": 0.11764705882352941,
+          "f1_macro": 0.10526315789473684,
+          "precision_low": 1.0,
+          "recall_low": 0.11764705882352941,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              10,
+              75
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.8907333321985789,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.548838198184967,
+          "test_subject": 688,
+          "n_train": 3329,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.6533333333333333,
+          "f1_macro": 0.3951612903225806,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6533333333333333,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              26,
+              49
+            ]
+          ],
+          "inference_ms": 1.110333333296391,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5232354998588562,
+          "test_subject": 790,
+          "n_train": 3337,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.1111111111111111,
+          "f1_macro": 0.1,
+          "precision_low": 1.0,
+          "recall_low": 0.1111111111111111,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              9,
+              72
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 0.823433329060208,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5585007667541504,
+          "test_subject": 797,
+          "n_train": 3335,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.011764705882352941,
+          "f1_macro": 0.011627906976744186,
+          "precision_low": 1.0,
+          "recall_low": 0.011764705882352941,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              1,
+              84
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.1285000000498258,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5746946930885315,
+          "test_subject": 812,
+          "n_train": 3342,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.5555555555555556,
+          "f1_macro": 0.35714285714285715,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5555555555555556,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              40,
+              50
+            ]
+          ],
+          "inference_ms": 0.8791666647690969,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5121938586235046,
+          "test_subject": 817,
+          "n_train": 3349,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.6351351351351351,
+          "f1_macro": 0.3884297520661157,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6351351351351351,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              27,
+              47
+            ]
+          ],
+          "inference_ms": 1.3104333314307344,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5253114700317383,
+          "test_subject": 829,
+          "n_train": 3343,
+          "n_test": 74
+        },
+        {
+          "accuracy": 0.7066666666666667,
+          "f1_macro": 0.4140625,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7066666666666667,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              22,
+              53
+            ]
+          ],
+          "inference_ms": 1.7540999979246408,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5292568206787109,
+          "test_subject": 900,
+          "n_train": 3340,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.5526315789473685,
+          "f1_macro": 0.3559322033898305,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5526315789473685,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              34,
+              42
+            ]
+          ],
+          "inference_ms": 0.7748333300696686,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.49878907203674316,
+          "test_subject": 969,
+          "n_train": 3326,
+          "n_test": 76
+        }
+      ],
+      "aggregate": {
+        "accuracy": 0.3986890781110046,
+        "f1_macro": 0.2530341737265501,
+        "precision_low": 0.4318181818181818,
+        "recall_low": 0.056584139699255534,
+        "precision_high": 0.5227272727272727,
+        "recall_high": 0.34210493841174905,
+        "auc": NaN,
+        "mean_inference_ms": 1.1189803026905847,
+        "n_subjects": 44,
+        "n_skipped": 0,
+        "n_fit_errors": 0
+      },
+      "subject_aggregate": {
+        "accuracy": 0.4772727272727273,
+        "f1_macro": 0.3230769230769231,
+        "precision_low": 0.0,
+        "recall_low": 0.0,
+        "precision_high": 0.5,
+        "recall_high": 0.9130434782608695,
+        "auc": 0.14285714285714285,
+        "n_subjects_used": 44
+      },
+      "n_subjects": 44
+    },
+    "CNN1D": {
+      "fold_results": [
+        {
+          "accuracy": 0.23655913978494625,
+          "f1_macro": 0.19130434782608696,
+          "precision_low": 1.0,
+          "recall_low": 0.23655913978494625,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              22,
+              71
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2983333314574945,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5790323615074158,
+          "test_subject": 103,
+          "n_train": 3318,
+          "n_test": 93
+        },
+        {
+          "accuracy": 0.25925925925925924,
+          "f1_macro": 0.20588235294117646,
+          "precision_low": 1.0,
+          "recall_low": 0.25925925925925924,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              21,
+              60
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4150666635638725,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5684815049171448,
+          "test_subject": 119,
+          "n_train": 3338,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.759493670886076,
+          "f1_macro": 0.4316546762589928,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.759493670886076,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              19,
+              60
+            ]
+          ],
+          "inference_ms": 1.1313333355550033,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5935742855072021,
+          "test_subject": 141,
+          "n_train": 3321,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.13580246913580246,
+          "f1_macro": 0.11956521739130435,
+          "precision_low": 1.0,
+          "recall_low": 0.13580246913580246,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              11,
+              70
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.3321333317435347,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5780857801437378,
+          "test_subject": 148,
+          "n_train": 3330,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.5,
+          "f1_macro": 0.3333333333333333,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              45,
+              45
+            ]
+          ],
+          "inference_ms": 1.4804333331994712,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5069177746772766,
+          "test_subject": 170,
+          "n_train": 3343,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.5853658536585366,
+          "f1_macro": 0.36923076923076925,
+          "precision_low": 1.0,
+          "recall_low": 0.5853658536585366,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              48,
+              34
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 2.5793333309896602,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.49664390087127686,
+          "test_subject": 181,
+          "n_train": 3358,
+          "n_test": 82
+        },
+        {
+          "accuracy": 0.8987341772151899,
+          "f1_macro": 0.47333333333333333,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.8987341772151899,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              8,
+              71
+            ]
+          ],
+          "inference_ms": 1.3567999994847924,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.6010261178016663,
+          "test_subject": 200,
+          "n_train": 3324,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.631578947368421,
+          "f1_macro": 0.3870967741935484,
+          "precision_low": 1.0,
+          "recall_low": 0.631578947368421,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              48,
+              28
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4048333347697433,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.49010446667671204,
+          "test_subject": 230,
+          "n_train": 3367,
+          "n_test": 76
+        },
+        {
+          "accuracy": 0.810126582278481,
+          "f1_macro": 0.44755244755244755,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.810126582278481,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              15,
+              64
+            ]
+          ],
+          "inference_ms": 1.3038000009449509,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5829384922981262,
+          "test_subject": 236,
+          "n_train": 3326,
+          "n_test": 79
+        },
+        {
+          "accuracy": 0.2077922077922078,
+          "f1_macro": 0.17204301075268819,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.2077922077922078,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              61,
+              16
+            ]
+          ],
+          "inference_ms": 1.3648333309295897,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.4436147212982178,
+          "test_subject": 246,
+          "n_train": 3348,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.7674418604651163,
+          "f1_macro": 0.4342105263157895,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7674418604651163,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              20,
+              66
+            ]
+          ],
+          "inference_ms": 1.5034000001226862,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.561654806137085,
+          "test_subject": 249,
+          "n_train": 3351,
+          "n_test": 86
+        },
+        {
+          "accuracy": 0.3972602739726027,
+          "f1_macro": 0.28431372549019607,
+          "precision_low": 1.0,
+          "recall_low": 0.3972602739726027,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              29,
+              44
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2141000018649113,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5267007350921631,
+          "test_subject": 256,
+          "n_train": 3341,
+          "n_test": 73
+        },
+        {
+          "accuracy": 0.3333333333333333,
+          "f1_macro": 0.25,
+          "precision_low": 1.0,
+          "recall_low": 0.3333333333333333,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              29,
+              58
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4335999997759548,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5455172061920166,
+          "test_subject": 275,
+          "n_train": 3326,
+          "n_test": 87
+        },
+        {
+          "accuracy": 0.6444444444444445,
+          "f1_macro": 0.3918918918918919,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6444444444444445,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              32,
+              58
+            ]
+          ],
+          "inference_ms": 1.327566666683803,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5474828481674194,
+          "test_subject": 320,
+          "n_train": 3315,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.547945205479452,
+          "f1_macro": 0.35398230088495575,
+          "precision_low": 1.0,
+          "recall_low": 0.547945205479452,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              40,
+              33
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.2426666677735436,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.4918156564235687,
+          "test_subject": 388,
+          "n_train": 3339,
+          "n_test": 73
+        },
+        {
+          "accuracy": 0.7441860465116279,
+          "f1_macro": 0.4266666666666667,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7441860465116279,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              22,
+              64
+            ]
+          ],
+          "inference_ms": 1.2410666677169502,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5614917874336243,
+          "test_subject": 391,
+          "n_train": 3326,
+          "n_test": 86
+        },
+        {
+          "accuracy": 0.20481927710843373,
+          "f1_macro": 0.17,
+          "precision_low": 1.0,
+          "recall_low": 0.20481927710843373,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              17,
+              66
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.366633334934401,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5913906097412109,
+          "test_subject": 403,
+          "n_train": 3335,
+          "n_test": 83
+        },
+        {
+          "accuracy": 0.6103896103896104,
+          "f1_macro": 0.3790322580645161,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6103896103896104,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              30,
+              47
+            ]
+          ],
+          "inference_ms": 1.3163666662876494,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5165353417396545,
+          "test_subject": 404,
+          "n_train": 3342,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.6666666666666666,
+          "f1_macro": 0.4,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6666666666666666,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              25,
+              50
+            ]
+          ],
+          "inference_ms": 1.4129000022270095,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5712173581123352,
+          "test_subject": 407,
+          "n_train": 3343,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.2696629213483146,
+          "f1_macro": 0.21238938053097345,
+          "precision_low": 1.0,
+          "recall_low": 0.2696629213483146,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              24,
+              65
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4812333344404276,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5712131261825562,
+          "test_subject": 410,
+          "n_train": 3322,
+          "n_test": 89
+        },
+        {
+          "accuracy": 0.4166666666666667,
+          "f1_macro": 0.29411764705882354,
+          "precision_low": 1.0,
+          "recall_low": 0.4166666666666667,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              40,
+              56
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.711333333029567,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5219070315361023,
+          "test_subject": 444,
+          "n_train": 3344,
+          "n_test": 96
+        },
+        {
+          "accuracy": 0.3125,
+          "f1_macro": 0.23809523809523808,
+          "precision_low": 1.0,
+          "recall_low": 0.3125,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              25,
+              55
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4559000022321318,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5594501495361328,
+          "test_subject": 502,
+          "n_train": 3335,
+          "n_test": 80
+        },
+        {
+          "accuracy": 0.36470588235294116,
+          "f1_macro": 0.2672413793103448,
+          "precision_low": 1.0,
+          "recall_low": 0.36470588235294116,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              31,
+              54
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.3726333345402963,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5470390915870667,
+          "test_subject": 503,
+          "n_train": 3333,
+          "n_test": 85
+        },
+        {
+          "accuracy": 1.0,
+          "f1_macro": 1.0,
+          "precision_low": 1.0,
+          "recall_low": 1.0,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.5560000004673686,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.44755080342292786,
+          "test_subject": 553,
+          "n_train": 3415,
+          "n_test": 1
+        },
+        {
+          "accuracy": 1.0,
+          "f1_macro": 1.0,
+          "precision_low": 1.0,
+          "recall_low": 1.0,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              1,
+              0
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.386700001603458,
+          "subject_true": 0,
+          "subject_pred": 0,
+          "subject_score": 0.44755080342292786,
+          "test_subject": 555,
+          "n_train": 3415,
+          "n_test": 1
+        },
+        {
+          "accuracy": 0.2692307692307692,
+          "f1_macro": 0.21212121212121213,
+          "precision_low": 1.0,
+          "recall_low": 0.2692307692307692,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              21,
+              57
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4001666689485621,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5674151182174683,
+          "test_subject": 556,
+          "n_train": 3336,
+          "n_test": 78
+        },
+        {
+          "accuracy": 0.7901234567901234,
+          "f1_macro": 0.4413793103448276,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7901234567901234,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              17,
+              64
+            ]
+          ],
+          "inference_ms": 1.4161999982510072,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5723282098770142,
+          "test_subject": 560,
+          "n_train": 3333,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.8311688311688312,
+          "f1_macro": 0.45390070921985815,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.8311688311688312,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              13,
+              64
+            ]
+          ],
+          "inference_ms": 1.469633335849115,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5823944807052612,
+          "test_subject": 576,
+          "n_train": 3327,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.6506024096385542,
+          "f1_macro": 0.39416058394160586,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6506024096385542,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              29,
+              54
+            ]
+          ],
+          "inference_ms": 1.1392999998255011,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5391398668289185,
+          "test_subject": 577,
+          "n_train": 3324,
+          "n_test": 83
+        },
+        {
+          "accuracy": 0.6956521739130435,
+          "f1_macro": 0.41025641025641024,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6956521739130435,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              28,
+              64
+            ]
+          ],
+          "inference_ms": 1.3149666653286356,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5564687848091125,
+          "test_subject": 589,
+          "n_train": 3317,
+          "n_test": 92
+        },
+        {
+          "accuracy": 0.5454545454545454,
+          "f1_macro": 0.35294117647058826,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5454545454545454,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              30,
+              36
+            ]
+          ],
+          "inference_ms": 1.53409999863167,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5003404021263123,
+          "test_subject": 603,
+          "n_train": 3350,
+          "n_test": 66
+        },
+        {
+          "accuracy": 0.3157894736842105,
+          "f1_macro": 0.24,
+          "precision_low": 1.0,
+          "recall_low": 0.3157894736842105,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              24,
+              52
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.3228333336883225,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5371949076652527,
+          "test_subject": 621,
+          "n_train": 3347,
+          "n_test": 76
+        },
+        {
+          "accuracy": 0.4827586206896552,
+          "f1_macro": 0.32558139534883723,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4827586206896552,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              45,
+              42
+            ]
+          ],
+          "inference_ms": 1.3242000010601866,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5005300045013428,
+          "test_subject": 644,
+          "n_train": 3323,
+          "n_test": 87
+        },
+        {
+          "accuracy": 0.4805194805194805,
+          "f1_macro": 0.32456140350877194,
+          "precision_low": 1.0,
+          "recall_low": 0.4805194805194805,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              37,
+              40
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4465666657391314,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.503398597240448,
+          "test_subject": 653,
+          "n_train": 3335,
+          "n_test": 77
+        },
+        {
+          "accuracy": 0.1282051282051282,
+          "f1_macro": 0.11363636363636363,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.1282051282051282,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              68,
+              10
+            ]
+          ],
+          "inference_ms": 1.4036666664954585,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.39900603890419006,
+          "test_subject": 676,
+          "n_train": 3348,
+          "n_test": 78
+        },
+        {
+          "accuracy": 0.5875,
+          "f1_macro": 0.3700787401574803,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.5875,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              33,
+              47
+            ]
+          ],
+          "inference_ms": 1.219100001132271,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5231755971908569,
+          "test_subject": 683,
+          "n_train": 3341,
+          "n_test": 80
+        },
+        {
+          "accuracy": 0.15294117647058825,
+          "f1_macro": 0.1326530612244898,
+          "precision_low": 1.0,
+          "recall_low": 0.15294117647058825,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              13,
+              72
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.4299666678804595,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5776332020759583,
+          "test_subject": 688,
+          "n_train": 3329,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.52,
+          "f1_macro": 0.34210526315789475,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.52,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              36,
+              39
+            ]
+          ],
+          "inference_ms": 1.228166666502754,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5062293410301208,
+          "test_subject": 790,
+          "n_train": 3337,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.345679012345679,
+          "f1_macro": 0.25688073394495414,
+          "precision_low": 1.0,
+          "recall_low": 0.345679012345679,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              28,
+              53
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.3583999995413858,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5226799249649048,
+          "test_subject": 797,
+          "n_train": 3335,
+          "n_test": 81
+        },
+        {
+          "accuracy": 0.25882352941176473,
+          "f1_macro": 0.205607476635514,
+          "precision_low": 1.0,
+          "recall_low": 0.25882352941176473,
+          "precision_high": 0.0,
+          "recall_high": 0.0,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              22,
+              63
+            ],
+            [
+              0,
+              0
+            ]
+          ],
+          "inference_ms": 1.3644000015726003,
+          "subject_true": 0,
+          "subject_pred": 1,
+          "subject_score": 0.5702624917030334,
+          "test_subject": 812,
+          "n_train": 3342,
+          "n_test": 85
+        },
+        {
+          "accuracy": 0.4777777777777778,
+          "f1_macro": 0.3233082706766917,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.4777777777777778,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              47,
+              43
+            ]
+          ],
+          "inference_ms": 1.2117000005673617,
+          "subject_true": 1,
+          "subject_pred": 0,
+          "subject_score": 0.5007838010787964,
+          "test_subject": 817,
+          "n_train": 3349,
+          "n_test": 90
+        },
+        {
+          "accuracy": 0.7297297297297297,
+          "f1_macro": 0.421875,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7297297297297297,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              20,
+              54
+            ]
+          ],
+          "inference_ms": 1.6603000015796472,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5511311888694763,
+          "test_subject": 829,
+          "n_train": 3343,
+          "n_test": 74
+        },
+        {
+          "accuracy": 0.7466666666666667,
+          "f1_macro": 0.42748091603053434,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.7466666666666667,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              19,
+              56
+            ]
+          ],
+          "inference_ms": 1.396466669878767,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.5693351626396179,
+          "test_subject": 900,
+          "n_train": 3340,
+          "n_test": 75
+        },
+        {
+          "accuracy": 0.6710526315789473,
+          "f1_macro": 0.4015748031496063,
+          "precision_low": 0.0,
+          "recall_low": 0.0,
+          "precision_high": 1.0,
+          "recall_high": 0.6710526315789473,
+          "auc": NaN,
+          "confusion_matrix": [
+            [
+              0,
+              0
+            ],
+            [
+              25,
+              51
+            ]
+          ],
+          "inference_ms": 0.9752333353389986,
+          "subject_true": 1,
+          "subject_pred": 1,
+          "subject_score": 0.538496196269989,
+          "test_subject": 969,
+          "n_train": 3326,
+          "n_test": 76
+        }
+      ],
+      "aggregate": {
+        "accuracy": 0.5223729524862187,
+        "f1_macro": 0.34961454788519813,
+        "precision_low": 0.4772727272727273,
+        "recall_low": 0.1936009697984364,
+        "precision_high": 0.5227272727272727,
+        "recall_high": 0.3287719826877823,
+        "auc": NaN,
+        "mean_inference_ms": 1.3932810610034116,
+        "n_subjects": 44,
+        "n_skipped": 0,
+        "n_fit_errors": 0
+      },
+      "subject_aggregate": {
+        "accuracy": 0.5227272727272727,
+        "f1_macro": 0.47707979626485564,
+        "precision_low": 0.5,
+        "recall_low": 0.23809523809523808,
+        "precision_high": 0.5294117647058824,
+        "recall_high": 0.782608695652174,
+        "auc": 0.525879917184265,
+        "n_subjects_used": 44
+      },
+      "n_subjects": 44
+    }
+  }
+}
