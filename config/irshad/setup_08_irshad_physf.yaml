@@ -24,7 +24,7 @@ label:
 preprocessing:
   cleaning_package: "neurokit2"
   z_standardise: true
-  outlier_strategy: "train_only"
+  outlier_strategy: "none"
   baseline_correction: "none"
   baseline_length_s: 60
 

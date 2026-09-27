@@ -17,6 +17,7 @@ results/*
 *.joblib
 
 # Keep generated result tables in version control
+!results/*/
 !results/*.md
 !results/**/*.md
 !results/*.csv
