@@ -58,6 +58,10 @@ features:
 models:
   classical:
     - "RandomForest"
+    - "XGBoost"
+    - "SVM"
+    - "LogisticRegression"
+    - "kNN"
   deep: []
 
 validation:

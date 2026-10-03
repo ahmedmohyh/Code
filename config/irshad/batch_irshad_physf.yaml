@@ -1,4 +1,4 @@
-# Batch definition for Irshad/PhySF setups.
+# Batch definition for Irshad/PhySF normal experiments.
 #
 # Run with:
 #   python scripts/run_batch_from_config.py --batch config/irshad/batch_irshad_physf.yaml
@@ -7,5 +7,6 @@ batch_name: "irshad_physf"
 n_jobs: -1  # use all CPU cores for feature extraction per setup
 
 configs:
-python scripts/run_grid_search.py --config config/irshad/grid_search/setup_08_irshad_physf_grid_search.yaml
-  - "config/irshad/grid_search/setup_08_irshad_physf_grid_search.yaml"
+  - "config/irshad/setup_08_irshad_physf.yaml"
+  - "config/irshad/setup_08a_irshad_physf_ecg_eda.yaml"
+  - "config/irshad/setup_08b_irshad_physf_ecg_only.yaml"

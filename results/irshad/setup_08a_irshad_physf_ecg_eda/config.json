@@ -23,6 +23,8 @@
   "label": {
     "method": "filename",
     "margin": 0.0,
+    "percentile_low": 0.2,
+    "percentile_high": 0.8,
     "items": "full_subscale",
     "classes": [
       "no_flow",
@@ -33,7 +35,7 @@
     "cleaning_package": "neurokit2",
     "z_standardise": true,
     "per_subject_normalize": false,
-    "outlier_strategy": "train_only",
+    "outlier_strategy": "none",
     "baseline_correction": "none",
     "baseline_length_s": 60,
     "baseline_from_procedure": false

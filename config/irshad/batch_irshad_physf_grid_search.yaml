@@ -1,0 +1,10 @@
+# Batch definition for Irshad/PhySF grid-search experiments.
+#
+# Run with:
+#   python scripts/run_grid_search.py --batch config/irshad/batch_irshad_physf_grid_search.yaml
+
+batch_name: "irshad_physf_grid_search"
+n_jobs: -1  # use all CPU cores for feature extraction per setup
+
+configs:
+  - "config/irshad/grid_search/setup_08_irshad_physf_grid_search.yaml"
