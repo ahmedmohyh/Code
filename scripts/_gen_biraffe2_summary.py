@@ -114,6 +114,7 @@ normal_rows = []
 grid_rows = []
 extreme_rows = []
 all_high_accuracy = []
+all_high_auc = []
 
 # Normal setups
 for d in sorted((root / 'normal').iterdir()):
@@ -140,6 +141,16 @@ for d in sorted((root / 'normal').iterdir()):
     normal_rows.append(row)
     if best['metrics']['accuracy'] > 0.68:
         all_high_accuracy.append({
+            'category': 'normal',
+            'experiment': name,
+            'model': best['model'],
+            'accuracy': best['metrics']['accuracy'],
+            'auc': best['auc'],
+            'pipeline': pipe,
+            'n': best['n'],
+        })
+    if best['auc'] > 0.68:
+        all_high_auc.append({
             'category': 'normal',
             'experiment': name,
             'model': best['model'],
@@ -183,6 +194,16 @@ for d in sorted(grid_search_root.iterdir()):
             'pipeline': pipe,
             'n': best['n'],
         })
+    if best['auc'] > 0.68:
+        all_high_auc.append({
+            'category': 'grid search',
+            'experiment': name,
+            'model': best['model'],
+            'accuracy': best['metrics']['accuracy'],
+            'auc': best['auc'],
+            'pipeline': pipe,
+            'n': best['n'],
+        })
 
 # Extreme percentile setups
 for d in sorted((root / 'extreme_percentile').iterdir()):
@@ -211,6 +232,16 @@ for d in sorted((root / 'extreme_percentile').iterdir()):
     extreme_rows.append(row)
     if best['metrics']['accuracy'] > 0.68:
         all_high_accuracy.append({
+            'category': f'extreme percentile ({variant})',
+            'experiment': name,
+            'model': best['model'],
+            'accuracy': best['metrics']['accuracy'],
+            'auc': best['auc'],
+            'pipeline': pipe,
+            'n': best['n'],
+        })
+    if best['auc'] > 0.68:
+        all_high_auc.append({
             'category': f'extreme percentile ({variant})',
             'experiment': name,
             'model': best['model'],
@@ -320,29 +351,53 @@ for r in sorted(extreme_rows, key=lambda x: x['experiment']):
 lines.append('')
 
 # Supervisor summary embedded in the table
-lines.append('## Supervisor summary: setups with subject-level accuracy > 0.68')
+lines.append('## Supervisor summary: setups with subject-level accuracy > 0.68 or AUC > 0.68')
 lines.append('')
-if not all_high_accuracy:
-    lines.append('No setup reached a subject-level accuracy above 0.68.')
+if not all_high_accuracy and not all_high_auc:
+    lines.append('No setup reached a subject-level accuracy or AUC above 0.68.')
 else:
-    for item in sorted(all_high_accuracy, key=lambda x: x['accuracy'], reverse=True):
-        p = item['pipeline']
-        lines.append(
-            f'### {item["experiment"]} ({item["category"]} — {item["model"]}, '
-            f'accuracy={fmt(item["accuracy"])}, AUC={fmt(item["auc"])}, n={fmt(item["n"])})'
-        )
+    if all_high_accuracy:
+        lines.append('### Accuracy > 0.68')
         lines.append('')
-        lines.append(f'- **Data / modalities:** {p["modalities"]}')
-        lines.append(f'- **Levels as pseudo-subjects:** {p["treat_levels_as_subjects"]}')
-        lines.append(f'- **Classifier:** {item["model"]}')
-        lines.append(f'- **Outlier strategy:** {p["outlier_strategy"]}')
-        lines.append(f'- **Z-standardisation:** {p["z_standardise"]}')
-        lines.append(f'- **Baseline correction:** {p["baseline_correction"]} (from procedure: {p["baseline_from_procedure"]})')
-        lines.append(f'- **Window / step:** {p["window_length_s"]}s / {p["step_s"]}s')
-        lines.append(f'- **Label method:** {p["label_method"]} (margin={p["margin"]})')
-        lines.append(f'- **Real level timestamps:** {p["real_level_times"]}')
-        lines.append(f'- **Models tested in config:** {p["models"]}')
+        for item in sorted(all_high_accuracy, key=lambda x: x['accuracy'], reverse=True):
+            p = item['pipeline']
+            lines.append(
+                f'#### {item["experiment"]} ({item["category"]} — {item["model"]}, '
+                f'accuracy={fmt(item["accuracy"])}, AUC={fmt(item["auc"])}, n={fmt(item["n"])})'
+            )
+            lines.append('')
+            lines.append(f'- **Data / modalities:** {p["modalities"]}')
+            lines.append(f'- **Levels as pseudo-subjects:** {p["treat_levels_as_subjects"]}')
+            lines.append(f'- **Classifier:** {item["model"]}')
+            lines.append(f'- **Outlier strategy:** {p["outlier_strategy"]}')
+            lines.append(f'- **Z-standardisation:** {p["z_standardise"]}')
+            lines.append(f'- **Baseline correction:** {p["baseline_correction"]} (from procedure: {p["baseline_from_procedure"]})')
+            lines.append(f'- **Window / step:** {p["window_length_s"]}s / {p["step_s"]}s')
+            lines.append(f'- **Label method:** {p["label_method"]} (margin={p["margin"]})')
+            lines.append(f'- **Real level timestamps:** {p["real_level_times"]}')
+            lines.append(f'- **Models tested in config:** {p["models"]}')
+            lines.append('')
+    if all_high_auc:
+        lines.append('### AUC > 0.68')
         lines.append('')
+        for item in sorted(all_high_auc, key=lambda x: x['auc'], reverse=True):
+            p = item['pipeline']
+            lines.append(
+                f'#### {item["experiment"]} ({item["category"]} — {item["model"]}, '
+                f'accuracy={fmt(item["accuracy"])}, AUC={fmt(item["auc"])}, n={fmt(item["n"])})'
+            )
+            lines.append('')
+            lines.append(f'- **Data / modalities:** {p["modalities"]}')
+            lines.append(f'- **Levels as pseudo-subjects:** {p["treat_levels_as_subjects"]}')
+            lines.append(f'- **Classifier:** {item["model"]}')
+            lines.append(f'- **Outlier strategy:** {p["outlier_strategy"]}')
+            lines.append(f'- **Z-standardisation:** {p["z_standardise"]}')
+            lines.append(f'- **Baseline correction:** {p["baseline_correction"]} (from procedure: {p["baseline_from_procedure"]})')
+            lines.append(f'- **Window / step:** {p["window_length_s"]}s / {p["step_s"]}s')
+            lines.append(f'- **Label method:** {p["label_method"]} (margin={p["margin"]})')
+            lines.append(f'- **Real level timestamps:** {p["real_level_times"]}')
+            lines.append(f'- **Models tested in config:** {p["models"]}')
+            lines.append('')
 
 # Write MD
 md_path = root / 'ablation_comparison.md'
@@ -406,41 +461,48 @@ if csv_rows:
         w.writerows(csv_rows)
     print(f'wrote {root / "ablation_comparison.csv"}')
 
+def _write_supervisor_items(sup_lines, items, title, sort_key):
+    sup_lines.append(f'## {title}')
+    sup_lines.append('')
+    if not items:
+        sup_lines.append(f'No setup reached a subject-level {title.lower()} above 0.68.')
+    else:
+        for item in sorted(items, key=lambda x: x[sort_key], reverse=True):
+            p = item['pipeline']
+            sup_lines.append(f'### {item["experiment"]}')
+            sup_lines.append('')
+            sup_lines.append(f'- **Category:** {item["category"]}')
+            sup_lines.append(f'- **Best classifier:** {item["model"]}')
+            sup_lines.append(f'- **Subject-level accuracy:** {fmt(item["accuracy"])}')
+            sup_lines.append(f'- **Subject-level AUC:** {fmt(item["auc"])}')
+            sup_lines.append(f'- **Number of pseudo-subjects (n):** {fmt(item["n"])}')
+            sup_lines.append(f'- **Data / modalities:** {p["modalities"]}')
+            sup_lines.append(f'- **Levels treated as subjects:** {p["treat_levels_as_subjects"]}')
+            sup_lines.append(f'- **Labeling:** {p["label_method"]} with margin={p["margin"]}')
+            sup_lines.append(f'- **Outlier strategy:** {p["outlier_strategy"]}')
+            sup_lines.append(f'- **Z-standardisation:** {p["z_standardise"]}')
+            sup_lines.append(
+                f'- **Baseline correction:** {p["baseline_correction"]} '
+                f'(from procedure events: {p["baseline_from_procedure"]})'
+            )
+            sup_lines.append(f'- **Window length / step:** {p["window_length_s"]}s / {p["step_s"]}s')
+            sup_lines.append(f'- **Real level timestamps (games_zip):** {p["real_level_times"]}')
+            sup_lines.append(f'- **All models tested in config:** {p["models"]}')
+            sup_lines.append('')
+
+
 # Write supervisor summary as separate file
 sup_lines = []
-sup_lines.append('# Biraffe2 Setups with Subject-Level Accuracy > 0.68')
+sup_lines.append('# Biraffe2 Setups with Subject-Level Accuracy or AUC > 0.68')
 sup_lines.append('')
 sup_lines.append(
-    'This document lists every Biraffe2 setup whose best model achieved a subject-level accuracy above 0.68 in LOSO cross-validation.'
+    'This document lists every Biraffe2 setup whose best model achieved a subject-level accuracy or AUC above 0.68 in LOSO cross-validation.'
 )
 sup_lines.append('')
-if not all_high_accuracy:
-    sup_lines.append('No setup reached a subject-level accuracy above 0.68.')
-else:
-    for item in sorted(all_high_accuracy, key=lambda x: x['accuracy'], reverse=True):
-        p = item['pipeline']
-        sup_lines.append(f'## {item["experiment"]}')
-        sup_lines.append('')
-        sup_lines.append(f'- **Category:** {item["category"]}')
-        sup_lines.append(f'- **Best classifier:** {item["model"]}')
-        sup_lines.append(f'- **Subject-level accuracy:** {fmt(item["accuracy"])}')
-        sup_lines.append(f'- **Subject-level AUC:** {fmt(item["auc"])}')
-        sup_lines.append(f'- **Number of pseudo-subjects (n):** {fmt(item["n"])}')
-        sup_lines.append(f'- **Data / modalities:** {p["modalities"]}')
-        sup_lines.append(f'- **Levels treated as subjects:** {p["treat_levels_as_subjects"]}')
-        sup_lines.append(f'- **Labeling:** {p["label_method"]} with margin={p["margin"]}')
-        sup_lines.append(f'- **Outlier strategy:** {p["outlier_strategy"]}')
-        sup_lines.append(f'- **Z-standardisation:** {p["z_standardise"]}')
-        sup_lines.append(
-            f'- **Baseline correction:** {p["baseline_correction"]} '
-            f'(from procedure events: {p["baseline_from_procedure"]})'
-        )
-        sup_lines.append(f'- **Window length / step:** {p["window_length_s"]}s / {p["step_s"]}s')
-        sup_lines.append(f'- **Real level timestamps (games_zip):** {p["real_level_times"]}')
-        sup_lines.append(f'- **All models tested in config:** {p["models"]}')
-        sup_lines.append('')
+_write_supervisor_items(sup_lines, all_high_accuracy, 'Accuracy > 0.68', 'accuracy')
+_write_supervisor_items(sup_lines, all_high_auc, 'AUC > 0.68', 'auc')
 
-sup_path = root / 'supervisor_accuracy_over_068.md'
+sup_path = root / 'supervisor_accuracy_or_auc_over_068.md'
 with open(sup_path, 'w', encoding='utf-8') as f:
     f.write('\n'.join(sup_lines))
 print(f'wrote {sup_path}')
@@ -448,3 +510,6 @@ print(f'wrote {sup_path}')
 print(f'\nHigh-accuracy setups found: {len(all_high_accuracy)}')
 for h in sorted(all_high_accuracy, key=lambda x: x['accuracy'], reverse=True):
     print(f'  {h["accuracy"]:.3f}  {h["experiment"]:60s} {h["category"]:25s} {h["model"]}')
+print(f'\nHigh-AUC setups found: {len(all_high_auc)}')
+for h in sorted(all_high_auc, key=lambda x: x['auc'], reverse=True):
+    print(f'  {h["auc"]:.3f}  {h["experiment"]:60s} {h["category"]:25s} {h["model"]}')
