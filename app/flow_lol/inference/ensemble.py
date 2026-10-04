@@ -14,6 +14,51 @@ from flow_lol.utils.paths import models_dir
 logger = logging.getLogger(__name__)
 
 
+def _apply_z_standardiser(X: np.ndarray, scaler: dict[str, Any]) -> np.ndarray:
+    """Apply mean/std normalisation from a fitted scaler dict."""
+    if not scaler.get("active", True):
+        return X
+    mean = scaler.get("mean_")
+    std = scaler.get("std_")
+    if mean is None or std is None:
+        return X
+    mean = np.array(mean)
+    std = np.array(std)
+    return (X - mean) / std
+
+
+def _apply_outlier(X: np.ndarray, outlier: dict[str, Any]) -> np.ndarray:
+    """Return outlier-in-mask using stored IQR thresholds."""
+    strategy = outlier.get("strategy", "none")
+    if strategy == "none":
+        return np.ones(len(X), dtype=bool)
+    lower = outlier.get("lower_")
+    upper = outlier.get("upper_")
+    if lower is None or upper is None:
+        return np.ones(len(X), dtype=bool)
+    lower = np.array(lower)
+    upper = np.array(upper)
+    inside = np.all((X >= lower) & (X <= upper), axis=1)
+    return inside
+
+
+def _apply_baseline(X: np.ndarray, baseline: dict[str, Any]) -> np.ndarray:
+    """Apply change-score or quotient baseline correction."""
+    method = baseline.get("method", "none")
+    if method == "none":
+        return X
+    b = baseline.get("baseline_")
+    if b is None:
+        return X
+    b = np.array(b)
+    if method == "change_score":
+        return X - b
+    if method == "quotient":
+        b = np.where(b == 0, 1e-9, b)
+        return X / b
+    return X
+
+
 class ClassifierEnsemble:
     """Load the five exported ECG-only models and produce a hard majority vote."""
 
@@ -54,22 +99,27 @@ class ClassifierEnsemble:
         """Return (label, probability_of_flow) after applying bundle preprocessing."""
         X = X.copy()
 
+        # Baseline correction first (if the bundle uses it at runtime).
+        baseline = bundle.get("baseline_corrector")
+        if baseline is not None:
+            X = _apply_baseline(X, baseline)
+
         # Drop all-NaN columns that were dropped during training.
         valid_cols = ~np.all(np.isnan(X), axis=0)
         X = X[:, valid_cols]
 
         # Z-standardisation using training statistics.
         scaler = bundle.get("scaler")
-        if scaler is not None and getattr(scaler, "active", True):
-            X = scaler.transform(X)
+        if scaler is not None and scaler.get("active", True):
+            X = _apply_z_standardiser(X, scaler)
 
         # Outlier handling is kept as a data-quality flag but does not block
         # prediction; real-time users may have different distributions than
         # the training set.
         outlier = bundle.get("outlier_handler")
-        if outlier is not None and getattr(outlier, "strategy", "none") != "none":
+        if outlier is not None and outlier.get("strategy", "none") != "none":
             try:
-                mask = outlier.transform(X)
+                mask = _apply_outlier(X, outlier)
                 if not mask[0]:
                     logger.debug("Window flagged as outlier by training thresholds")
             except Exception:

@@ -161,9 +161,9 @@ def _fit_and_save(
 
     bundle = {
         "model": model,
-        "scaler": scaler,
-        "outlier_handler": outlier,
-        "baseline_corrector": baseline,
+        "scaler": _scaler_to_dict(scaler),
+        "outlier_handler": _outlier_to_dict(outlier),
+        "baseline_corrector": _baseline_to_dict(baseline),
         "feature_names": feature_names,
         "metadata": metadata,
     }
@@ -176,6 +176,7 @@ def _safe_clean_ecg(
     signal: np.ndarray, sampling_rate: float, package: str, context: str
 ) -> Optional[np.ndarray]:
     """Clean ECG if signal is long enough; otherwise return None."""
+
     # neurokit2's Butterworth filter needs at least ~18 samples of padding.
     min_samples = max(100, int(2 * sampling_rate))
     if signal.size < min_samples:
@@ -193,6 +194,36 @@ def _safe_clean_ecg(
     except Exception as exc:
         logger.warning("[%s] ECG cleaning failed: %s", context, exc)
         return None
+
+
+def _scaler_to_dict(scaler: ZStandardiser) -> Dict[str, Any]:
+    """Convert a fitted ZStandardiser to a JSON-serializable dict."""
+    return {
+        "type": "ZStandardiser",
+        "active": getattr(scaler, "active", True),
+        "mean_": scaler.mean_.tolist() if scaler.mean_ is not None else None,
+        "std_": scaler.std_.tolist() if scaler.std_ is not None else None,
+    }
+
+
+def _outlier_to_dict(outlier: OutlierHandler) -> Dict[str, Any]:
+    """Convert a fitted OutlierHandler to a JSON-serializable dict."""
+    return {
+        "type": "OutlierHandler",
+        "strategy": getattr(outlier, "strategy", "none"),
+        "factor": getattr(outlier, "factor", 1.5),
+        "lower_": outlier.lower_.tolist() if outlier.lower_ is not None else None,
+        "upper_": outlier.upper_.tolist() if outlier.upper_ is not None else None,
+    }
+
+
+def _baseline_to_dict(baseline: BaselineCorrector) -> Dict[str, Any]:
+    """Convert a fitted BaselineCorrector to a JSON-serializable dict."""
+    return {
+        "type": "BaselineCorrector",
+        "method": getattr(baseline, "method", "none"),
+        "baseline_": baseline.baseline_.tolist() if baseline.baseline_ is not None else None,
+    }
 
 
 # ---------------------------------------------------------------------------
