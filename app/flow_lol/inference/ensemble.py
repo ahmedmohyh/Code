@@ -58,19 +58,33 @@ class ClassifierEnsemble:
         valid_cols = ~np.all(np.isnan(X), axis=0)
         X = X[:, valid_cols]
 
-        # Outlier handling: train_only stores IQR bounds; none keeps everything.
-        outlier = bundle.get("outlier_handler")
-        if outlier is not None and getattr(outlier, "strategy", "none") != "none":
-            mask = outlier.transform(X)
-            if not mask[0]:
-                logger.debug("Window flagged as outlier by training thresholds")
-
         # Z-standardisation using training statistics.
         scaler = bundle.get("scaler")
         if scaler is not None and getattr(scaler, "active", True):
             X = scaler.transform(X)
 
+        # Outlier handling is kept as a data-quality flag but does not block
+        # prediction; real-time users may have different distributions than
+        # the training set.
+        outlier = bundle.get("outlier_handler")
+        if outlier is not None and getattr(outlier, "strategy", "none") != "none":
+            try:
+                mask = outlier.transform(X)
+                if not mask[0]:
+                    logger.debug("Window flagged as outlier by training thresholds")
+            except Exception:
+                pass
+
         model = bundle["model"]
+        # Ensure deep-learning models run on CPU if the bundle was moved there.
+        if hasattr(model, "device"):
+            model.device = "cpu"
+        if hasattr(model, "to"):
+            try:
+                model.to("cpu")
+            except Exception:
+                pass
+
         label = int(model.predict(X)[0])
         proba = None
         if hasattr(model, "predict_proba"):

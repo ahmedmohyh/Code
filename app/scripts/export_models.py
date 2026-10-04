@@ -150,6 +150,15 @@ def _fit_and_save(
     logger.info("Fitting %s on %d windows, %d features", metadata["model_name"], X.shape[0], X.shape[1])
     model.fit(X, y)
 
+    # Move PyTorch models to CPU before saving so bundles are portable.
+    if hasattr(model, "to"):
+        try:
+            model.to("cpu")
+        except Exception:
+            pass
+    if hasattr(model, "device"):
+        model.device = "cpu"
+
     bundle = {
         "model": model,
         "scaler": scaler,
@@ -161,6 +170,29 @@ def _fit_and_save(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(bundle, output_path)
     logger.info("Saved model bundle to %s", output_path.resolve())
+
+
+def _safe_clean_ecg(
+    signal: np.ndarray, sampling_rate: float, package: str, context: str
+) -> Optional[np.ndarray]:
+    """Clean ECG if signal is long enough; otherwise return None."""
+    # neurokit2's Butterworth filter needs at least ~18 samples of padding.
+    min_samples = max(100, int(2 * sampling_rate))
+    if signal.size < min_samples:
+        logger.warning(
+            "[%s] signal too short for cleaning (%d < %d samples); skipping",
+            context,
+            signal.size,
+            min_samples,
+        )
+        return None
+    try:
+        from flow_lol.preprocessing.cleaners.ecg_cleaner import clean_ecg
+
+        return clean_ecg(signal, sampling_rate=sampling_rate, package=package)
+    except Exception as exc:
+        logger.warning("[%s] ECG cleaning failed: %s", context, exc)
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -189,15 +221,16 @@ def _build_biraffe2_Xy(
     y_by_subject: Dict[int, np.ndarray] = {}
     feature_names: List[str] = []
 
-    from flow_lol.preprocessing.cleaners.ecg_cleaner import clean_ecg
-
     active_subjects = [sid for sid, m in zip(subjects, mask) if m]
     for sid in active_subjects:
         record = loader.load_subject(sid)
         ecg_raw = record["signal"]["ECG"].to_numpy(dtype=float)
-        ecg_clean = clean_ecg(
-            ecg_raw, sampling_rate=loader.sample_rate, package=config.preprocessing.cleaning_package
+        ecg_clean = _safe_clean_ecg(
+            ecg_raw, sampling_rate=loader.sample_rate, package=config.preprocessing.cleaning_package, context=f"subject {sid}"
         )
+        if ecg_clean is None:
+            logger.warning("[skip subject %s] ECG could not be cleaned", sid)
+            continue
 
         feats, fnames = _extract_windows(
             ecg_clean, loader.sample_rate, segmenter, config.features
@@ -215,26 +248,34 @@ def _build_biraffe2_Xy(
             )
             if baseline_signal is not None and not baseline_signal.empty:
                 baseline_ecg = baseline_signal["ECG"].to_numpy(dtype=float)
-                baseline_clean = clean_ecg(
+                baseline_clean = _safe_clean_ecg(
                     baseline_ecg,
                     sampling_rate=loader.sample_rate,
                     package=config.preprocessing.cleaning_package,
+                    context=f"subject {sid} baseline",
                 )
-                baseline_feats, _ = _extract_windows(
-                    baseline_clean, loader.sample_rate, segmenter, config.features
-                )
-                if baseline_feats:
-                    baseline_matrix = np.array(
-                        [[f.get(name, np.nan) for name in fnames] for f in baseline_feats]
-                    )
-                    baseline_matrix = impute_missing(baseline_matrix, strategy="median")
-                    X = baseline.fit_transform(baseline_matrix, X)
-                else:
+                if baseline_clean is None:
                     logger.warning(
-                        "[subject %s] could not extract baseline features; skipping baseline correction",
+                        "[subject %s] baseline ECG could not be cleaned; skipping baseline correction",
                         sid,
                     )
                     baseline = BaselineCorrector(method="none")
+                else:
+                    baseline_feats, _ = _extract_windows(
+                        baseline_clean, loader.sample_rate, segmenter, config.features
+                    )
+                    if baseline_feats:
+                        baseline_matrix = np.array(
+                            [[f.get(name, np.nan) for name in fnames] for f in baseline_feats]
+                        )
+                        baseline_matrix = impute_missing(baseline_matrix, strategy="median")
+                        X = baseline.fit_transform(baseline_matrix, X)
+                    else:
+                        logger.warning(
+                            "[subject %s] could not extract baseline features; skipping baseline correction",
+                            sid,
+                        )
+                        baseline = BaselineCorrector(method="none")
             else:
                 logger.warning(
                     "[subject %s] no baseline signal available; skipping baseline correction", sid
@@ -377,16 +418,20 @@ def export_irshad_rf(
     y_by_subject: Dict[int, np.ndarray] = {}
     feature_names: List[str] = []
 
-    from flow_lol.preprocessing.cleaners.ecg_cleaner import clean_ecg
-
     for sid in subjects:
         label = loader.get_label(sid)
         record = loader.load_subject(sid)
         ecg_raw = record["signal"]["ECG"].to_numpy(dtype=float)
 
-        ecg_clean = clean_ecg(
-            ecg_raw, sampling_rate=loader.sample_rate, package=config.preprocessing.cleaning_package
+        ecg_clean = _safe_clean_ecg(
+            ecg_raw,
+            sampling_rate=loader.sample_rate,
+            package=config.preprocessing.cleaning_package,
+            context=f"irshad subject {sid}",
         )
+        if ecg_clean is None:
+            logger.warning("[skip subject %s] ECG could not be cleaned", sid)
+            continue
 
         feats, fnames = _extract_windows(
             ecg_clean, loader.sample_rate, segmenter, config.features

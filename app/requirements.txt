@@ -13,6 +13,7 @@ numpy>=1.24.0
 scipy>=1.11.0
 scikit-learn>=1.3.0
 joblib>=1.3.0
+neurokit2>=0.2.7
 
 # Persistence
 SQLAlchemy>=2.0.0
@@ -25,6 +26,7 @@ opencv-python>=4.8.0
 # Utilities
 python-dateutil>=2.8.0
 appdirs>=1.4.4
+psutil>=5.9.0
 
 # Packaging (development only)
 pyinstaller>=6.0.0

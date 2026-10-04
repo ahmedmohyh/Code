@@ -40,8 +40,8 @@ class AppSettings:
     use_biraffe2_mlp: bool = True
 
     # Signal processing
-    window_seconds: int = 30
-    overlap_percent: int = 50
+    window_seconds: int = 60  # matches the model training setup
+    overlap_percent: int = 50  # 30 s step for 60 s windows
     sampling_rate: int = 130  # Polar H10 ECG default
 
     # Interventions

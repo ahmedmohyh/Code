@@ -237,10 +237,23 @@ class SettingsDialog(QDialog):
         if not (self.use_h10_box.isChecked() or self.use_verity_box.isChecked()):
             QMessageBox.warning(self, "Invalid sensors", "Enable at least one sensor.")
             return
-        if not (self.use_biraffe2_svm_box.isChecked() or self.use_biraffe2_knn_box.isChecked()
-                or self.use_biraffe2_rf_box.isChecked() or self.use_irshad_rf_box.isChecked()
-                or self.use_biraffe2_mlp_box.isChecked()):
+
+        enabled_classifiers = [
+            self.use_biraffe2_svm_box.isChecked(),
+            self.use_biraffe2_knn_box.isChecked(),
+            self.use_biraffe2_rf_box.isChecked(),
+            self.use_irshad_rf_box.isChecked(),
+            self.use_biraffe2_mlp_box.isChecked(),
+        ]
+        if sum(enabled_classifiers) == 0:
             QMessageBox.warning(self, "Invalid classifiers", "Enable at least one classifier.")
+            return
+        if sum(enabled_classifiers) % 2 == 0:
+            QMessageBox.warning(
+                self,
+                "Invalid ensemble size",
+                "Enable an odd number of classifiers so the majority vote always has a winner.",
+            )
             return
 
         self.settings.use_h10 = self.use_h10_box.isChecked()
