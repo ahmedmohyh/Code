@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BIRAFFE2 and Irshad/PhySF Setups with Accuracy or AUC &gt; 0.68</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2em; background: #f9f9f9; color: #222; }
+    h1 { color: #1a1a1a; font-size: 1.5em; }
+    h2 { color: #333; font-size: 1.25em; margin-top: 2em; border-bottom: 2px solid #ddd; padding-bottom: .3em; }
+    p { max-width: 80em; line-height: 1.5; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1em; background: #fff; font-size: 0.85em; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #e8e8e8; font-weight: bold; }
+    tr:nth-child(even) { background: #f4f4f4; }
+    .description { min-width: 16em; }
+    .labels { min-width: 14em; }
+    .pipeline { min-width: 24em; }
+  </style>
+</head>
+<body>
+<h1>BIRAFFE2 and Irshad/PhySF Setups with Subject-Level Accuracy or AUC > 0.68</h1>
+<p>This document lists every BIRAFFE2 and Irshad/PhySF setup whose best model achieved a subject-level accuracy or AUC above 0.68 in LOSO cross-validation.</p>
+<h2>Setups with AUC ≥ 0.68</h2>
+<table>
+  <tr>
+    <th class="description">Description</th>
+    <th class="labels">How Labels Were Created</th>
+    <th>Accuracy</th>
+    <th>AUC</th>
+    <th>n</th>
+    <th>Best Classifier</th>
+    <th>Modalities</th>
+    <th>Preprocessing & Library</th>
+    <th>Normalization</th>
+    <th class="pipeline">Full Pipeline</th>
+  </tr>
+  <tr>
+    <td class="description">Irshad/PhySF dataset: ECG + EDA + EEG classification of flow vs. no-flow.</td>
+    <td class="labels">Labels: binary flow / no-flow classes derived from the recording filename</td>
+    <td>0.667</td>
+    <td>0.889</td>
+    <td>9</td>
+    <td>RandomForest</td>
+    <td>ECG, EDA, EEG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=none</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG, EDA, EEG. 9 real subjects, 128 Hz. windows are 60-second segments of the recording. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. No baseline correction. Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Baseline-corrected ECG: windows compared against a 60s pre-task baseline using 'change_score' correction. Classical machine-learning classifiers tested (no deep learning).</td>
+    <td class="labels">Labels: lowest 20% vs. highest 20% of summed FSS-GEQ flow scores (bottom/top)</td>
+    <td>0.730</td>
+    <td>0.790</td>
+    <td>111</td>
+    <td>SVM</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=change_score</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. Levels treated as pseudo-subjects. windows evenly distributed across the recorded signal. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. Baseline correction: change_score (60s from procedure=True). Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, XGBoost, SVM, LogisticRegression, kNN. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Irshad/PhySF dataset: ECG + EDA + EEG classification of flow vs. no-flow.</td>
+    <td class="labels">Labels: binary flow / no-flow classes derived from the recording filename</td>
+    <td>0.667</td>
+    <td>0.778</td>
+    <td>9</td>
+    <td>XGBoost</td>
+    <td>ECG, EDA, EEG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=none</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG, EDA, EEG. 9 real subjects, 128 Hz. windows are 60-second segments of the recording. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. No baseline correction. Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Baseline-corrected ECG: windows compared against a 60s pre-task baseline using 'change_score' correction.</td>
+    <td class="labels">Labels: lowest 20% vs. highest 20% of summed FSS-GEQ flow scores (bottom/top)</td>
+    <td>0.640</td>
+    <td>0.730</td>
+    <td>111</td>
+    <td>MLP</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=change_score</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. Levels treated as pseudo-subjects. windows evenly distributed across the recorded signal. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. Baseline correction: change_score (60s from procedure=True). Segmentation: 60s windows, 30s step. Models evaluated: MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Baseline-corrected ECG: windows compared against a 60s pre-task baseline using 'change_score' correction. Classical machine-learning classifiers tested (no deep learning).</td>
+    <td class="labels">Labels: lowest 20% vs. highest 20% of summed FSS-GEQ flow scores (bottom/top)</td>
+    <td>0.676</td>
+    <td>0.726</td>
+    <td>105</td>
+    <td>RandomForest</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=change_score</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. Levels treated as pseudo-subjects. windows aligned to actual game-level timestamps from game logs. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. Baseline correction: change_score (60s from procedure=True). Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, XGBoost, SVM, LogisticRegression, kNN. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Baseline-corrected ECG: windows compared against a 60s pre-task baseline using 'change_score' correction.</td>
+    <td class="labels">Labels: lowest 20% vs. highest 20% of summed FSS-GEQ flow scores (bottom/top)</td>
+    <td>0.619</td>
+    <td>0.724</td>
+    <td>105</td>
+    <td>MLP</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=change_score</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. Levels treated as pseudo-subjects. windows aligned to actual game-level timestamps from game logs. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. Baseline correction: change_score (60s from procedure=True). Segmentation: 60s windows, 30s step. Models evaluated: MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Irshad/PhySF dataset: ECG-only classification of flow vs. no-flow.</td>
+    <td class="labels">Labels: binary flow / no-flow classes derived from the recording filename</td>
+    <td>0.680</td>
+    <td>0.712</td>
+    <td>25</td>
+    <td>RandomForest</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=none</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. 25 real subjects, 128 Hz. windows are 60-second segments of the recording. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. No baseline correction. Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Irshad/PhySF dataset: ECG-only classification of flow vs. no-flow.</td>
+    <td class="labels">Labels: binary flow / no-flow classes derived from the recording filename</td>
+    <td>0.720</td>
+    <td>0.692</td>
+    <td>25</td>
+    <td>RandomForest</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=none; baseline=none</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. 25 real subjects, 128 Hz. windows are 60-second segments of the recording. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: none. Normalization: z-standardisation=True. No baseline correction. Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Baseline-corrected ECG: windows compared against a 60s pre-task baseline using 'change_score' correction. Hyperparameter grid search performed for the listed classical classifier.</td>
+    <td class="labels">Labels: above/below median of summed FSS-GEQ flow scores (margin=0.0)</td>
+    <td>0.647</td>
+    <td>0.681</td>
+    <td>207</td>
+    <td>RandomForest</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=change_score</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. Levels treated as pseudo-subjects. windows aligned to actual game-level timestamps from game logs. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. Baseline correction: change_score (60s from procedure=True). Segmentation: 60s windows, 30s step. Models evaluated: RandomForest. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Multimodal input: ECG, EDA, and facial/video features combined. Classical machine-learning classifiers tested (no deep learning).</td>
+    <td class="labels">Labels: lowest 20% vs. highest 20% of summed FSS-GEQ flow scores (bottom/top)</td>
+    <td>0.612</td>
+    <td>0.681</td>
+    <td>134</td>
+    <td>kNN</td>
+    <td>ECG, EDA, FACE</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=none; baseline=none</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG, EDA, FACE. Levels treated as pseudo-subjects. windows evenly distributed across the recorded signal. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: none. Normalization: z-standardisation=True. No baseline correction. Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, XGBoost, SVM, LogisticRegression, kNN. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+</table>
+<h2>Setups with Accuracy ≥ 0.68</h2>
+<table>
+  <tr>
+    <th class="description">Description</th>
+    <th class="labels">How Labels Were Created</th>
+    <th>Accuracy</th>
+    <th>AUC</th>
+    <th>n</th>
+    <th>Best Classifier</th>
+    <th>Modalities</th>
+    <th>Preprocessing & Library</th>
+    <th>Normalization</th>
+    <th class="pipeline">Full Pipeline</th>
+  </tr>
+  <tr>
+    <td class="description">Baseline-corrected ECG: windows compared against a 60s pre-task baseline using 'change_score' correction. Classical machine-learning classifiers tested (no deep learning).</td>
+    <td class="labels">Labels: lowest 20% vs. highest 20% of summed FSS-GEQ flow scores (bottom/top)</td>
+    <td>0.730</td>
+    <td>0.790</td>
+    <td>111</td>
+    <td>SVM</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=train_only; baseline=change_score</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. Levels treated as pseudo-subjects. windows evenly distributed across the recorded signal. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: train_only. Normalization: z-standardisation=True. Baseline correction: change_score (60s from procedure=True). Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, XGBoost, SVM, LogisticRegression, kNN. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+  <tr>
+    <td class="description">Irshad/PhySF dataset: ECG-only classification of flow vs. no-flow.</td>
+    <td class="labels">Labels: binary flow / no-flow classes derived from the recording filename</td>
+    <td>0.720</td>
+    <td>0.692</td>
+    <td>25</td>
+    <td>RandomForest</td>
+    <td>ECG</td>
+    <td>neurokit2 cleaning; neurokit2 feature extraction; outliers=none; baseline=none</td>
+    <td>z-standardisation=True</td>
+    <td class="pipeline">Data: ECG. 25 real subjects, 128 Hz. windows are 60-second segments of the recording. Features extracted with neurokit2 after neurokit2 cleaning. Outlier handling: none. Normalization: z-standardisation=True. No baseline correction. Segmentation: 60s windows, 30s step. Models evaluated: RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D. Validation: leave-one-subject-out (LOSO).</td>
+  </tr>
+</table>
+</body>
+</html>

@@ -6,6 +6,8 @@ import numpy as np
 
 root = Path('results/biraffe2')
 config_root = Path('config/biraffe2')
+irshad_root = Path('results/irshad')
+irshad_config_root = Path('config/irshad')
 
 METRICS = ['accuracy', 'f1_macro', 'precision_low', 'recall_low', 'precision_high', 'recall_high', 'auc']
 
@@ -36,25 +38,36 @@ def get_config_path(sub, name):
     return None
 
 
-def find_best_model(metrics_data):
-    """Find best model by subject-level AUC."""
+def find_best_model(metrics_data, metric='auc'):
+    """Find best model by a subject-level metric (default AUC)."""
     models = metrics_data.get('models', {})
     best = None
     for model_name, model_data in models.items():
         if not isinstance(model_data, dict):
             continue
         sub = model_data.get('subject_aggregate', {})
-        auc = sub.get('auc')
-        if auc is None or np.isnan(auc):
+        value = sub.get(metric)
+        if value is None or np.isnan(value):
             continue
-        if best is None or auc > best['auc']:
+        if best is None or value > best[metric]:
             best = {
                 'model': model_name,
-                'auc': auc,
+                'auc': sub.get('auc'),
                 'metrics': {m: sub.get(m, np.nan) for m in METRICS},
                 'n': sub.get('n_subjects_used'),
             }
     return best
+
+
+def get_irshad_config_path(name):
+    candidates = [
+        irshad_config_root / f'{name}.yaml',
+        irshad_config_root / 'grid_search' / f'{name}.yaml',
+    ]
+    for c in candidates:
+        if c.exists():
+            return c
+    return None
 
 
 def describe_pipeline(cfg):
@@ -66,16 +79,24 @@ def describe_pipeline(cfg):
     lbl = cfg.get('label', {})
     method = lbl.get('method', '')
     margin = lbl.get('margin', 0.0)
+    percentile_low = lbl.get('percentile_low')
+    percentile_high = lbl.get('percentile_high')
 
     prep = cfg.get('preprocessing', {})
+    cleaning_pkg = prep.get('cleaning_package', '')
     outlier = prep.get('outlier_strategy', '')
     zscore = prep.get('z_standardise', False)
     baseline = prep.get('baseline_correction', 'none')
     baseline_from_proc = prep.get('baseline_from_procedure', False)
+    baseline_length = prep.get('baseline_length_s', '')
+    per_subject_norm = prep.get('per_subject_normalize', False)
 
     seg = cfg.get('segmentation', {})
     window = seg.get('window_length_s', '')
     step = seg.get('step_s', '')
+
+    feats = cfg.get('features', {})
+    feature_pkg = feats.get('package', '')
 
     models = cfg.get('models', {})
     classical = models.get('classical', [])
@@ -85,19 +106,60 @@ def describe_pipeline(cfg):
     games_zip = ds.get('games_zip_path') or ds.get('games_path')
     real_level_times = games_zip is not None
 
+    # Build a compact human-readable label description
+    if method == 'extreme_percentile':
+        low_pct = int(round(percentile_low * 100)) if percentile_low is not None else ''
+        high_pct = int(round((1 - percentile_high) * 100)) if percentile_high is not None else ''
+        label_desc = f"extreme percentile bottom {low_pct}% / top {high_pct}%"
+    elif method == 'median_split':
+        label_desc = f"median split (margin={margin})"
+    elif method == 'filename':
+        label_desc = "binary labels from filename (flow / no_flow)"
+    else:
+        label_desc = method
+
+    # Build a compact pipeline description
+    parts = []
+    parts.append(f"Data: {', '.join(modalities)}")
+    if treat_levels:
+        parts.append("levels as pseudo-subjects")
+    if real_level_times:
+        parts.append("real-level timestamps")
+    parts.append(f"labels={label_desc}")
+    parts.append(f"cleaning={cleaning_pkg}")
+    parts.append(f"features={feature_pkg}")
+    parts.append(f"outliers={outlier}")
+    parts.append(f"z-std={zscore}")
+    if per_subject_norm:
+        parts.append("per-subject normalization")
+    if baseline != 'none':
+        parts.append(f"baseline={baseline} ({baseline_length}s from procedure={baseline_from_proc})")
+    parts.append(f"window={window}s/step={step}s")
+    parts.append(f"models={', '.join(all_models) if all_models else '—'}")
+    parts.append("validation=LOSO")
+
     return {
+        'dataset': ds.get('name', ''),
         'modalities': ', '.join(modalities),
         'treat_levels_as_subjects': treat_levels,
         'label_method': method,
         'margin': margin,
+        'percentile_low': percentile_low,
+        'percentile_high': percentile_high,
         'outlier_strategy': outlier,
         'z_standardise': zscore,
         'baseline_correction': baseline,
         'baseline_from_procedure': baseline_from_proc,
+        'baseline_length_s': baseline_length,
+        'per_subject_normalize': per_subject_norm,
         'window_length_s': window,
         'step_s': step,
         'models': ', '.join(all_models) if all_models else '—',
         'real_level_times': real_level_times,
+        'cleaning_package': cleaning_pkg,
+        'feature_package': feature_pkg,
+        'label_description': label_desc,
+        'pipeline_description': ' | '.join(parts),
     }
 
 
@@ -249,6 +311,108 @@ for d in sorted((root / 'extreme_percentile').iterdir()):
             'auc': best['auc'],
             'pipeline': pipe,
             'n': best['n'],
+        })
+
+# Irshad/PhySF setups
+irshad_rows = []
+
+# Current metrics.json results (outlier_strategy: none)
+for d in sorted(irshad_root.iterdir()):
+    if not d.is_dir() or d.name == 'grid_search':
+        continue
+    name = d.name
+    metrics_file = d / 'metrics.json'
+    if not metrics_file.exists():
+        continue
+    metrics = load_json(metrics_file)
+    best = find_best_model(metrics)
+    if best is None:
+        continue
+    cfg_path = get_irshad_config_path(name)
+    cfg = load_yaml(cfg_path) if cfg_path else {}
+    pipe = describe_pipeline(cfg)
+    row = {
+        'experiment': name,
+        'variant': 'no outlier removal',
+        'model': best['model'],
+        **{m: best['metrics'][m] for m in METRICS},
+        'n': best['n'],
+        'pipeline': pipe,
+    }
+    irshad_rows.append(row)
+
+# Grid-search result
+grid_metrics_file = irshad_root / 'grid_search' / 'setup_08_irshad_physf_grid_search' / 'metrics.json'
+if grid_metrics_file.exists():
+    metrics = load_json(grid_metrics_file)
+    best = find_best_model(metrics)
+    if best is not None:
+        cfg_path = get_irshad_config_path('setup_08_irshad_physf_grid_search')
+        cfg = load_yaml(cfg_path) if cfg_path else {}
+        pipe = describe_pipeline(cfg)
+        irshad_rows.append({
+            'experiment': 'setup_08_irshad_physf_grid_search',
+            'variant': 'grid search (no outlier removal)',
+            'model': best['model'],
+            **{m: best['metrics'][m] for m in METRICS},
+            'n': best['n'],
+            'pipeline': pipe,
+        })
+
+# Historical CSV results (outlier_strategy: train_only)
+irshad_csv_path = irshad_root / 'ablation_comparison.csv'
+if irshad_csv_path.exists():
+    with open(irshad_csv_path, 'r', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            # train_only results
+            auc = row.get('auc')
+            acc = row.get('accuracy')
+            n = row.get('n')
+            if auc and float(auc) >= 0.68:
+                exp = row['experiment']
+                cfg_path = get_irshad_config_path(exp)
+                cfg = load_yaml(cfg_path) if cfg_path else {}
+                pipe = describe_pipeline(cfg)
+                # Override outlier strategy to reflect the train_only variant
+                pipe = dict(pipe)
+                pipe['outlier_strategy'] = 'train_only'
+                pipe['pipeline_description'] = pipe['pipeline_description'].replace('outliers=none', 'outliers=train_only')
+                irshad_rows.append({
+                    'experiment': exp,
+                    'variant': 'IQR outlier removal (train_only)',
+                    'model': row['model'],
+                    'accuracy': float(acc) if acc else np.nan,
+                    'f1_macro': float(row['f1_macro']) if row.get('f1_macro') else np.nan,
+                    'precision_low': np.nan,
+                    'recall_low': np.nan,
+                    'precision_high': np.nan,
+                    'recall_high': np.nan,
+                    'auc': float(auc),
+                    'n': int(n) if n else np.nan,
+                    'pipeline': pipe,
+                })
+
+for row in irshad_rows:
+    if row['accuracy'] > 0.68:
+        all_high_accuracy.append({
+            'category': f"Irshad/PhySF ({row['variant']})",
+            'experiment': row['experiment'],
+            'model': row['model'],
+            'accuracy': row['accuracy'],
+            'auc': row['auc'],
+            'pipeline': row['pipeline'],
+            'n': row['n'],
+        })
+    if row['auc'] > 0.68:
+        all_high_auc.append({
+            'category': f"Irshad/PhySF ({row['variant']})",
+            'experiment': row['experiment'],
+            'model': row['model'],
+            'accuracy': row['accuracy'],
+            'auc': row['auc'],
+            'pipeline': row['pipeline'],
+            'n': row['n'],
         })
 
 # Build overview table mapping experiments to their variants
@@ -461,46 +625,145 @@ if csv_rows:
         w.writerows(csv_rows)
     print(f'wrote {root / "ablation_comparison.csv"}')
 
-def _write_supervisor_items(sup_lines, items, title, sort_key):
+def _supervisor_category(p):
+    """Translate internal category names into plain-language descriptions."""
+    method = p['label_method']
+    if method == 'extreme_percentile':
+        low = int(round(p['percentile_low'] * 100)) if p['percentile_low'] is not None else ''
+        high = int(round((1 - p['percentile_high']) * 100)) if p['percentile_high'] is not None else ''
+        label_text = f"Labels: lowest {low}% vs. highest {high}% of summed FSS-GEQ flow scores (bottom/top)"
+    elif method == 'median_split':
+        label_text = f"Labels: above/below median of summed FSS-GEQ flow scores (margin={p['margin']})"
+    elif method == 'filename':
+        label_text = "Labels: binary flow / no-flow classes derived from the recording filename"
+    else:
+        label_text = f"Labels: {method}"
+
+    if p.get('dataset') == 'Irshad_PhySF':
+        label_text += "; windows are 60-second segments of the recording"
+    elif p['real_level_times']:
+        label_text += "; windows aligned to actual game-level timestamps from game logs"
+    else:
+        label_text += "; windows evenly distributed across the recorded signal"
+    return label_text
+
+
+def _supervisor_setup_description(item, p):
+    """Build a plain-language description of what this setup actually does."""
+    desc_parts = []
+    if 'baseline_correction' in item['experiment'] and p['baseline_correction'] != 'none':
+        desc_parts.append(
+            f"Baseline-corrected ECG: windows compared against a {p['baseline_length_s']}s pre-task baseline "
+            f"using '{p['baseline_correction']}' correction."
+        )
+    if 'full_multimodal' in item['experiment']:
+        desc_parts.append("Multimodal input: ECG, EDA, and facial/video features combined.")
+    if 'without_time_distortion' in item['experiment']:
+        desc_parts.append("Uses the original, unmodified FSS-GEQ flow scores without any time/level distortion.")
+    if 'raw_geq' in item['experiment']:
+        desc_parts.append("Uses raw per-item FSS-GEQ scores instead of a summed subscale.")
+    if 'heartpy' in item['experiment']:
+        desc_parts.append("HeartPy package used for ECG cleaning and feature extraction.")
+    if 'per_subject_normalization' in item['experiment'] or p['per_subject_normalize']:
+        desc_parts.append("Features normalized per subject before classification.")
+    if 'drop_unreliable_60s_features' in item['experiment']:
+        desc_parts.append("Unreliable 60-second HRV features removed from the feature set.")
+    if 'shorter_step' in item['experiment']:
+        desc_parts.append("Smaller step size between consecutive windows (more overlapping windows).")
+    if '5min_window' in item['experiment']:
+        desc_parts.append("Longer 5-minute analysis windows instead of the default 60-second windows.")
+    if 'levels_as_subjects' in item['experiment']:
+        desc_parts.append("Each game level treated as an independent pseudo-subject.")
+    if 'no_zscore' in item['experiment']:
+        desc_parts.append("No z-standardisation applied to features.")
+    if 'no_outlier' in item['experiment']:
+        desc_parts.append("No outlier removal applied.")
+    if 'label_margin' in item['experiment']:
+        desc_parts.append(f"Ambiguous middle flow scores excluded from training (margin={p['margin']}).")
+    if '_classical' in item['experiment']:
+        desc_parts.append("Classical machine-learning classifiers tested (no deep learning).")
+    if '_grid_search' in item['experiment']:
+        desc_parts.append("Hyperparameter grid search performed for the listed classical classifier.")
+    if 'irshad' in item['experiment']:
+        if 'setup_08b' in item['experiment'] or 'ecg_only' in item['experiment']:
+            desc_parts.append("Irshad/PhySF dataset: ECG-only classification of flow vs. no-flow.")
+        elif 'setup_08a' in item['experiment'] or 'ecg_eda' in item['experiment']:
+            desc_parts.append("Irshad/PhySF dataset: ECG + EDA classification of flow vs. no-flow.")
+        elif 'setup_08' in item['experiment']:
+            desc_parts.append("Irshad/PhySF dataset: ECG + EDA + EEG classification of flow vs. no-flow.")
+        if 'grid_search' in item['experiment']:
+            desc_parts.append("Hyperparameter grid search for classical classifiers.")
+
+    if not desc_parts:
+        desc_parts.append("Standard configuration with the listed modalities and preprocessing.")
+    return ' '.join(desc_parts)
+
+
+def _write_supervisor_table(sup_lines, items, title, sort_key):
     sup_lines.append(f'## {title}')
     sup_lines.append('')
     if not items:
         sup_lines.append(f'No setup reached a subject-level {title.lower()} above 0.68.')
-    else:
-        for item in sorted(items, key=lambda x: x[sort_key], reverse=True):
-            p = item['pipeline']
-            sup_lines.append(f'### {item["experiment"]}')
-            sup_lines.append('')
-            sup_lines.append(f'- **Category:** {item["category"]}')
-            sup_lines.append(f'- **Best classifier:** {item["model"]}')
-            sup_lines.append(f'- **Subject-level accuracy:** {fmt(item["accuracy"])}')
-            sup_lines.append(f'- **Subject-level AUC:** {fmt(item["auc"])}')
-            sup_lines.append(f'- **Number of pseudo-subjects (n):** {fmt(item["n"])}')
-            sup_lines.append(f'- **Data / modalities:** {p["modalities"]}')
-            sup_lines.append(f'- **Levels treated as subjects:** {p["treat_levels_as_subjects"]}')
-            sup_lines.append(f'- **Labeling:** {p["label_method"]} with margin={p["margin"]}')
-            sup_lines.append(f'- **Outlier strategy:** {p["outlier_strategy"]}')
-            sup_lines.append(f'- **Z-standardisation:** {p["z_standardise"]}')
-            sup_lines.append(
-                f'- **Baseline correction:** {p["baseline_correction"]} '
-                f'(from procedure events: {p["baseline_from_procedure"]})'
-            )
-            sup_lines.append(f'- **Window length / step:** {p["window_length_s"]}s / {p["step_s"]}s')
-            sup_lines.append(f'- **Real level timestamps (games_zip):** {p["real_level_times"]}')
-            sup_lines.append(f'- **All models tested in config:** {p["models"]}')
-            sup_lines.append('')
+        return
+    header = (
+        '| Description | How Labels Were Created | Accuracy | AUC | n | Best Classifier | '
+        'Modalities | Preprocessing & Library | Normalization | Full Pipeline |'
+    )
+    sep = '|---|---|---|---|---|---|---|---|---|---|'
+    sup_lines.append(header)
+    sup_lines.append(sep)
+    for item in sorted(items, key=lambda x: x[sort_key], reverse=True):
+        p = item['pipeline']
+        category = _supervisor_category(p)
+        description = _supervisor_setup_description(item, p)
+        preprocessing = (
+            f"{p['cleaning_package']} cleaning; {p['feature_package']} feature extraction; "
+            f"outliers={p['outlier_strategy']}; baseline={p['baseline_correction']}"
+        )
+        normalization = f"z-standardisation={p['z_standardise']}"
+        if p['per_subject_normalize']:
+            normalization += " + per-subject normalization"
+        if p['dataset'] == 'Irshad_PhySF':
+            subject_text = f"{item['n']} real subjects, 128 Hz. "
+        elif p['treat_levels_as_subjects']:
+            subject_text = "Levels treated as pseudo-subjects. "
+        else:
+            subject_text = ""
+        window_timing = category.split(';')[1].strip() + '. ' if ';' in category else ''
+        baseline_text = (
+            f"Baseline correction: {p['baseline_correction']} "
+            f"({p['baseline_length_s']}s from procedure={p['baseline_from_procedure']}). "
+            if p['baseline_correction'] != 'none' else
+            "No baseline correction. "
+        )
+        full_pipeline = (
+            f"Data: {p['modalities']}. {subject_text}"
+            f"{window_timing}"
+            f"Features extracted with {p['feature_package']} after {p['cleaning_package']} cleaning. "
+            f"Outlier handling: {p['outlier_strategy']}. "
+            f"Normalization: {normalization}. "
+            f"{baseline_text}"
+            f"Segmentation: {p['window_length_s']}s windows, {p['step_s']}s step. "
+            f"Models evaluated: {p['models']}. Validation: leave-one-subject-out (LOSO)."
+        )
+        sup_lines.append(
+            f"| {description} | {category.split(';')[0].strip()} | {fmt(item['accuracy'])} | "
+            f"{fmt(item['auc'])} | {fmt(item['n'])} | {item['model']} | "
+            f"{p['modalities']} | {preprocessing} | {normalization} | {full_pipeline} |"
+        )
+    sup_lines.append('')
 
 
 # Write supervisor summary as separate file
 sup_lines = []
-sup_lines.append('# Biraffe2 Setups with Subject-Level Accuracy or AUC > 0.68')
+sup_lines.append('# BIRAFFE2 and Irshad/PhySF Setups with Subject-Level Accuracy or AUC > 0.68')
 sup_lines.append('')
 sup_lines.append(
-    'This document lists every Biraffe2 setup whose best model achieved a subject-level accuracy or AUC above 0.68 in LOSO cross-validation.'
+    'This document lists every BIRAFFE2 and Irshad/PhySF setup whose best model achieved a subject-level accuracy or AUC above 0.68 in LOSO cross-validation.'
 )
 sup_lines.append('')
-_write_supervisor_items(sup_lines, all_high_accuracy, 'Accuracy > 0.68', 'accuracy')
-_write_supervisor_items(sup_lines, all_high_auc, 'AUC > 0.68', 'auc')
+_write_supervisor_table(sup_lines, all_high_auc, 'Setups with AUC ≥ 0.68', 'auc')
+_write_supervisor_table(sup_lines, all_high_accuracy, 'Setups with Accuracy ≥ 0.68', 'accuracy')
 
 sup_path = root / 'supervisor_accuracy_or_auc_over_068.md'
 with open(sup_path, 'w', encoding='utf-8') as f:

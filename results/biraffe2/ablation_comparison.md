@@ -199,7 +199,33 @@ All metrics below are **subject-level aggregates** from LOSO cross-validation.
 - **Real level timestamps:** False
 - **Models tested in config:** RandomForest, XGBoost, SVM, LogisticRegression, kNN
 
+#### setup_08b_irshad_physf_ecg_only (Irshad/PhySF (no outlier removal) — RandomForest, accuracy=0.720, AUC=0.692, n=25)
+
+- **Data / modalities:** ECG
+- **Levels as pseudo-subjects:** False
+- **Classifier:** RandomForest
+- **Outlier strategy:** none
+- **Z-standardisation:** True
+- **Baseline correction:** none (from procedure: False)
+- **Window / step:** 60s / 30s
+- **Label method:** filename (margin=0.0)
+- **Real level timestamps:** False
+- **Models tested in config:** RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D
+
 ### AUC > 0.68
+
+#### setup_08_irshad_physf (Irshad/PhySF (IQR outlier removal (train_only)) — RandomForest, accuracy=0.667, AUC=0.889, n=9)
+
+- **Data / modalities:** ECG, EDA, EEG
+- **Levels as pseudo-subjects:** False
+- **Classifier:** RandomForest
+- **Outlier strategy:** train_only
+- **Z-standardisation:** True
+- **Baseline correction:** none (from procedure: False)
+- **Window / step:** 60s / 30s
+- **Label method:** filename (margin=0.0)
+- **Real level timestamps:** False
+- **Models tested in config:** RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D
 
 #### setup_12_biraffe2_baseline_correction_extreme_percentile_classical (extreme percentile (equal split) — SVM, accuracy=0.730, AUC=0.790, n=111)
 
@@ -213,6 +239,19 @@ All metrics below are **subject-level aggregates** from LOSO cross-validation.
 - **Label method:** extreme_percentile (margin=0.0)
 - **Real level timestamps:** False
 - **Models tested in config:** RandomForest, XGBoost, SVM, LogisticRegression, kNN
+
+#### setup_08_irshad_physf (Irshad/PhySF (IQR outlier removal (train_only)) — XGBoost, accuracy=0.667, AUC=0.778, n=9)
+
+- **Data / modalities:** ECG, EDA, EEG
+- **Levels as pseudo-subjects:** False
+- **Classifier:** XGBoost
+- **Outlier strategy:** train_only
+- **Z-standardisation:** True
+- **Baseline correction:** none (from procedure: False)
+- **Window / step:** 60s / 30s
+- **Label method:** filename (margin=0.0)
+- **Real level timestamps:** False
+- **Models tested in config:** RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D
 
 #### setup_12_biraffe2_baseline_correction_extreme_percentile (extreme percentile (equal split) — MLP, accuracy=0.640, AUC=0.730, n=111)
 
@@ -252,6 +291,32 @@ All metrics below are **subject-level aggregates** from LOSO cross-validation.
 - **Label method:** extreme_percentile (margin=0.0)
 - **Real level timestamps:** True
 - **Models tested in config:** MLP, LSTM, CNN1D
+
+#### setup_08b_irshad_physf_ecg_only (Irshad/PhySF (IQR outlier removal (train_only)) — RandomForest, accuracy=0.680, AUC=0.712, n=25)
+
+- **Data / modalities:** ECG
+- **Levels as pseudo-subjects:** False
+- **Classifier:** RandomForest
+- **Outlier strategy:** train_only
+- **Z-standardisation:** True
+- **Baseline correction:** none (from procedure: False)
+- **Window / step:** 60s / 30s
+- **Label method:** filename (margin=0.0)
+- **Real level timestamps:** False
+- **Models tested in config:** RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D
+
+#### setup_08b_irshad_physf_ecg_only (Irshad/PhySF (no outlier removal) — RandomForest, accuracy=0.720, AUC=0.692, n=25)
+
+- **Data / modalities:** ECG
+- **Levels as pseudo-subjects:** False
+- **Classifier:** RandomForest
+- **Outlier strategy:** none
+- **Z-standardisation:** True
+- **Baseline correction:** none (from procedure: False)
+- **Window / step:** 60s / 30s
+- **Label method:** filename (margin=0.0)
+- **Real level timestamps:** False
+- **Models tested in config:** RandomForest, SVM, kNN, LogisticRegression, XGBoost, MLP, LSTM, CNN1D
 
 #### setup_12_biraffe2_baseline_correction_grid_search (grid search — RandomForest, accuracy=0.647, AUC=0.681, n=207)
 
