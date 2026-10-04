@@ -21,8 +21,10 @@ from PyQt6.QtWidgets import (
 
 from flow_lol.config.settings import AppSettings
 from flow_lol.ui.dashboard import DashboardWidget
+from flow_lol.ui.logs_widget import LogsWidget
 from flow_lol.ui.sensor_worker import SensorWorker
 from flow_lol.ui.settings_dialog import SettingsDialog
+from flow_lol.ui.webcam_widget import WebcamWidget
 
 logger = logging.getLogger(__name__)
 
@@ -93,17 +95,36 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.stop_match_button)
         toolbar.addSeparator()
 
-        dashboard_btn = QPushButton("Dashboard")
-        dashboard_btn.setCheckable(True)
-        dashboard_btn.setChecked(True)
-        dashboard_btn.clicked.connect(lambda: self.stack.setCurrentIndex(0))
-        toolbar.addWidget(dashboard_btn)
+        self._tab_buttons: list[QPushButton] = []
+        self.dashboard_btn = self._add_tab_button(toolbar, "Dashboard", 0)
+        self.logs_btn = self._add_tab_button(toolbar, "Logs", 1)
+        self.webcam_btn = self._add_tab_button(toolbar, "Webcam", 2)
+
+    def _add_tab_button(self, toolbar: QToolBar, label: str, index: int) -> QPushButton:
+        btn = QPushButton(label)
+        btn.setCheckable(True)
+        btn.setChecked(index == 0)
+        btn.clicked.connect(lambda checked, i=index: self._set_tab(i))
+        toolbar.addWidget(btn)
+        self._tab_buttons.append(btn)
+        return btn
+
+    def _set_tab(self, index: int) -> None:
+        for i, btn in enumerate(self._tab_buttons):
+            btn.setChecked(i == index)
+        self.stack.setCurrentIndex(index)
 
     def _create_central_widget(self) -> None:
         self.stack = QStackedWidget()
 
         self.dashboard = DashboardWidget()
         self.stack.addWidget(self.dashboard)
+
+        self.logs = LogsWidget()
+        self.stack.addWidget(self.logs)
+
+        self.webcam = WebcamWidget()
+        self.stack.addWidget(self.webcam)
 
         # Status label sits above the dashboard
         status_container = QWidget()
@@ -138,6 +159,7 @@ class MainWindow(QMainWindow):
         self.worker = SensorWorker(self.settings, parent=self)
         self.worker.connection_changed.connect(self._on_connection_changed)
         self.worker.prediction.connect(self._on_prediction)
+        self.worker.samples.connect(self._on_samples)
         self.worker.error.connect(self._on_error)
         self.worker.match_started.connect(self._on_match_started)
         self.worker.match_ended.connect(self._on_match_ended)
@@ -160,6 +182,8 @@ class MainWindow(QMainWindow):
         self.stop_match_button.setEnabled(False)
         self._in_match = False
         self.dashboard.refresh_sessions()
+        self.logs.refresh_logs()
+        self.webcam.refresh_list()
         self._status_label.setText("Session stopped. Dashboard updated.")
         logger.info("Session stopped")
 
@@ -190,6 +214,9 @@ class MainWindow(QMainWindow):
     def _on_error(self, name: str, exc: object) -> None:
         self._status_label.setText(f"[{name}] error: {exc}")
         logger.error("[%s] worker error: %s", name, exc)
+
+    def _on_samples(self, name: str, samples: object) -> None:
+        self.logs.add_samples(name, samples)
 
     def _on_match_started(self, game_mode: str, detected: bool) -> None:
         self._in_match = True

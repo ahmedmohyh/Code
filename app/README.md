@@ -9,7 +9,7 @@ Derived from the MaxQDA coding results (`AF-01` … `AF-10`) and the best-perfor
 ## Architecture overview
 
 - **Frontend / UI**: PyQt6 / PySide6, single-window app with a system tray icon
-- **Backend / inference**: pre-trained ECG-only classifiers, loaded from disk
+- **Backend / inference**: pre-trained ECG-only classifiers, loaded from disk; the MLP is a self-contained PyTorch model with weights copied from the research pipeline
 - **Streaming**: BLE ECG via `bleak`
   - Primary: Polar H10 chest belt
   - Secondary / optional: Polar Verity Sense (armband)

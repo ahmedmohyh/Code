@@ -54,14 +54,17 @@ class SensorManager:
         return cb
 
     async def start(self) -> None:
-        """Start enabled sensor streams."""
+        """Start enabled sensor streams.
+
+        A failing sensor emits an error signal but does not kill the whole
+        worker, so the UI can keep the session alive for webcam/game logging.
+        """
         if self._running:
             return
         self._running = True
 
         if self.settings.use_h10:
             buffer = ECGBuffer()
-            self.buffers["h10"] = buffer
             stream = PolarH10BufferedStream(
                 buffer=buffer,
                 device_address=None,
@@ -70,11 +73,18 @@ class SensorManager:
                 on_error=self._make_error_callback("h10"),
                 on_samples_extra=self._make_samples_callback("h10"),
             )
-            self.streams["h10"] = stream
-            await stream.start()
+            try:
+                await stream.start()
+                self.buffers["h10"] = buffer
+                self.streams["h10"] = stream
+            except Exception as exc:
+                logger.error("Could not start H10 stream: %s", exc)
 
         if self.settings.use_verity:
             logger.warning("Verity Sense streaming requested but not implemented")
+
+        if not self.buffers:
+            logger.warning("No sensors connected; session will continue for webcam/game logging only")
 
     async def stop(self) -> None:
         """Stop all sensor streams."""

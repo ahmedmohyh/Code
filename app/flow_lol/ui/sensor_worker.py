@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 class SensorWorker(QThread):
     connection_changed = pyqtSignal(str, str)
     prediction = pyqtSignal(str, object)
+    samples = pyqtSignal(str, object)  # sensor_name, List[ECGSample]
     error = pyqtSignal(str, object)
     match_started = pyqtSignal(str, bool)
     match_ended = pyqtSignal()
@@ -97,7 +98,23 @@ class SensorWorker(QThread):
             on_error=self._on_error,
             on_samples=self._on_samples,
         )
-        await self.manager.start()
+        try:
+            await self.manager.start()
+        except Exception as exc:
+            # SensorManager catches per-sensor failures, but guard against
+            # anything unexpected so the worker thread does not die.
+            logger.exception("Sensor manager failed to start")
+            self._on_error("manager", exc)
+
+        if not self.manager.buffers:
+            self._on_error(
+                "manager",
+                RuntimeError(
+                    "No ECG sensor connected. "
+                    "Check Bluetooth pairing and that the H10 is blinking blue, "
+                    "then press Stop session and Start session again."
+                ),
+            )
 
         try:
             while not self._stop_event.is_set():
@@ -143,6 +160,7 @@ class SensorWorker(QThread):
     def _on_samples(self, name: str, samples: list) -> None:
         if self.ecg_writer is not None:
             self.ecg_writer.add_samples(name, samples)
+        self.samples.emit(name, samples)
 
     def _on_match_start(self, game_mode: str, detected: bool) -> None:
         if self.repository is not None and self.session_id is not None:

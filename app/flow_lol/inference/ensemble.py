@@ -8,7 +8,9 @@ from typing import Any
 
 import joblib
 import numpy as np
+import torch
 
+from flow_lol.inference.mlp_model import AppMLPClassifier
 from flow_lol.utils.paths import models_dir
 
 logger = logging.getLogger(__name__)
@@ -126,6 +128,27 @@ class ClassifierEnsemble:
                 pass
 
         model = bundle["model"]
+
+        # MLPs are exported as a plain dict so the bundle has no research-package
+        # dependency; reconstruct the app-side MLP here.
+        if isinstance(model, dict) and model.get("type") == "torch_mlp":
+            n_features = int(model.get("n_features", X.shape[1]))
+            n_classes = int(model.get("n_classes", 2))
+            mlp = AppMLPClassifier(n_features=n_features, n_classes=n_classes, device="cpu")
+            mlp.model_.load_state_dict(model["state_dict"])
+            mean = model.get("scaler_mean")
+            std = model.get("scaler_std")
+            if mean is not None and std is not None:
+                mlp.set_scaler(np.array(mean), np.array(std))
+
+            label = int(mlp.predict(X)[0])
+            proba = None
+            try:
+                proba = float(mlp.predict_proba(X)[0, 1])
+            except Exception:
+                pass
+            return label, proba
+
         # Ensure deep-learning models run on CPU if the bundle was moved there.
         if hasattr(model, "device"):
             model.device = "cpu"

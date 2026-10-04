@@ -16,7 +16,7 @@ class AppSettings:
 
     # Sensor
     use_h10: bool = True
-    use_verity: bool = True
+    use_verity: bool = False  # Verity Sense streaming is not implemented yet
     preferred_sensor: str = "auto"  # "auto", "h10", "verity"
 
     # Paths

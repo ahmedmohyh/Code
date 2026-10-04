@@ -125,7 +125,7 @@ def _build_Xy(
 
 
 def _fit_and_save(
-    model: BaseEstimator,
+    model: BaseEstimator | Dict[str, Any],
     X: np.ndarray,
     y: np.ndarray,
     feature_names: List[str],
@@ -134,9 +134,11 @@ def _fit_and_save(
     baseline: BaselineCorrector,
     metadata: Dict[str, Any],
     output_path: Path,
+    pre_fitted: bool = False,
 ) -> None:
     """Fit model on preprocessed data and save a joblib bundle."""
-    # Drop all-NaN columns
+    # Drop all-NaN columns, then refit scaler/outlier so their parameters
+    # match the final feature set used by the model.
     valid_cols = ~np.all(np.isnan(X), axis=0)
     if not np.all(valid_cols):
         dropped = [fn for fn, ok in zip(feature_names, valid_cols) if not ok]
@@ -144,20 +146,41 @@ def _fit_and_save(
         feature_names = [fn for fn, ok in zip(feature_names, valid_cols) if ok]
         metadata["dropped_all_nan_features"] = dropped
 
+        # Recompute preprocessing parameters on the reduced feature set.
+        scaler = ZStandardiser(active=getattr(scaler, "active", True))
+        outlier = OutlierHandler(strategy=getattr(outlier, "strategy", "none"))
+        scaler.fit(X)
+        outlier.fit(X)
+
     if len(np.unique(y)) < 2:
         raise ValueError("Only one class present after preprocessing; cannot fit model.")
 
-    logger.info("Fitting %s on %d windows, %d features", metadata["model_name"], X.shape[0], X.shape[1])
-    model.fit(X, y)
+    if pre_fitted:
+        logger.info(
+            "Saving pre-fitted %s on %d windows, %d features",
+            metadata["model_name"],
+            X.shape[0],
+            X.shape[1],
+        )
+    else:
+        logger.info(
+            "Fitting %s on %d windows, %d features",
+            metadata["model_name"],
+            X.shape[0],
+            X.shape[1],
+        )
+        if isinstance(model, dict):
+            raise TypeError("pre_fitted=False but model is a dict; pass pre_fitted=True for MLP bundles.")
+        model.fit(X, y)
 
-    # Move PyTorch models to CPU before saving so bundles are portable.
-    if hasattr(model, "to"):
-        try:
-            model.to("cpu")
-        except Exception:
-            pass
-    if hasattr(model, "device"):
-        model.device = "cpu"
+        # Move PyTorch models to CPU before saving so bundles are portable.
+        if hasattr(model, "to"):
+            try:
+                model.to("cpu")
+            except Exception:
+                pass
+        if hasattr(model, "device"):
+            model.device = "cpu"
 
     bundle = {
         "model": model,
@@ -355,9 +378,20 @@ def _preprocess_for_training(
     X = X[mask_out]
     y = y[mask_out]
 
+    # Drop all-NaN columns BEFORE fitting the scaler so the saved scaler has
+    # the same dimension as the final feature vector used by the models.
+    valid_cols = ~np.all(np.isnan(X), axis=0)
+    if not np.all(valid_cols):
+        X = X[:, valid_cols]
+        feature_names = [fn for fn, ok in zip(feature_names, valid_cols) if ok]
+        # Refit outlier bounds on the reduced feature set (no row filtering).
+        outlier = OutlierHandler(strategy=outlier_strategy)
+        outlier.fit(X)
+
     scaler = ZStandardiser(active=z_standardise)
     X = scaler.fit_transform(X)
 
+    # Defensive second pass: drop any columns that became all-NaN after scaling.
     valid_cols = ~np.all(np.isnan(X), axis=0)
     if not np.all(valid_cols):
         X = X[:, valid_cols]
@@ -402,7 +436,16 @@ def export_biraffe2_mlp(
     output_path: Path,
     Xy_cache: Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray], List[str], Dict[str, Any]] | None = None,
 ) -> None:
-    """Train and export the BIRAFFE2 MLP deep-learning model."""
+    """Train and export the BIRAFFE2 MLP deep-learning model.
+
+    The research DeepClassifierWrapper depends on the research flow_lol package,
+    so we train with it, then save only the CPU weights and scaler in a plain
+    dict.  At runtime the app reconstructs its self-contained
+    ``flow_lol.inference.mlp_model.AppMLPClassifier`` from that dict, so the
+    exported bundle has no research-package dependency.
+    """
+    import torch
+
     if Xy_cache is None:
         X_by_subject, y_by_subject, feature_names, meta = _build_biraffe2_Xy(config_path)
     else:
@@ -413,14 +456,45 @@ def export_biraffe2_mlp(
     )
 
     config = load_config(str(config_path))
-    model = build_deep_classifier(
+    research_model = build_deep_classifier(
         "MLP", n_features=X.shape[1], n_classes=2, random_state=config.seed
     )
+    research_model.fit(X, y)
+    research_model.model_.to("cpu")
+
+    # Store the MLP as a plain, picklable dict.  This avoids any custom class
+    # pickling issues when loading the bundle in the deployed app.
+    mlp_model: Dict[str, Any] = {
+        "type": "torch_mlp",
+        "n_features": X.shape[1],
+        "n_classes": 2,
+        "state_dict": {
+            k: v.detach().cpu().clone()
+            for k, v in research_model.model_.state_dict().items()
+        },
+        "scaler_mean": np.array(scaler.mean_) if scaler.mean_ is not None else None,
+        "scaler_std": np.array(scaler.std_) if scaler.std_ is not None else None,
+    }
+
     meta = dict(meta)
     meta["model_name"] = "BIRAFFE2 MLP"
     meta["family"] = "deep"
     baseline = BaselineCorrector(method="none")
-    _fit_and_save(model, X, y, feature_names, outlier, scaler, baseline, meta, output_path)
+
+    # The scaler is already baked into the MLP dict, so store a disabled one.
+    scaler_disabled = ZStandardiser(active=False)
+    _fit_and_save(
+        mlp_model,
+        X,
+        y,
+        feature_names,
+        outlier,
+        scaler_disabled,
+        baseline,
+        meta,
+        output_path,
+        pre_fitted=True,
+    )
 
 
 # ---------------------------------------------------------------------------
