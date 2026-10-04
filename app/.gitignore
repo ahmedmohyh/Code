@@ -1,0 +1,15 @@
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+config.json
+models/*.joblib
+models/*.onnx
+models/*.pkl
+data/
+logs/
+build/
+dist/
+*.spec

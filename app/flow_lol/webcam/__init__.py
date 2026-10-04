@@ -1,0 +1,1 @@
+"""Webcam background recording."""
