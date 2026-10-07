@@ -10,9 +10,9 @@ Derived from the MaxQDA coding results (`AF-01` … `AF-10`) and the best-perfor
 
 - **Frontend / UI**: PyQt6 / PySide6, single-window app with a system tray icon
 - **Backend / inference**: pre-trained ECG-only classifiers, loaded from disk; the MLP is a self-contained PyTorch model with weights copied from the research pipeline
-- **Streaming**: BLE ECG via `bleak`
+- **Streaming**: BLE ECG via `polar_python` (Polar PMD protocol)
   - Primary: Polar H10 chest belt
-  - Secondary / optional: Polar Verity Sense (armband)
+  - Secondary / optional: Polar Verity Sense (armband) — stubbed, disabled by default
 - **Classifier ensemble**: hard majority vote
   - BIRAFFE2 SVM (classical)
   - BIRAFFE2 kNN (classical)
@@ -35,17 +35,19 @@ Stored in JSON (`config.json`) and editable in the GUI:
 
 | Setting | Default | Notes |
 |---------|---------|-------|
-| Sensor selection | H10 + Verity Sense | Auto-detect connected sensors |
-| Preferred sensor | auto | User can pick H10 / Verity Sense / both; if both and no preference, predictions are averaged |
-| ECG save path | `app/data/ecg/` | One gzipped CSV per sensor per session (timestamp, value) |
-| Webcam recording | enabled | MP4 saved under `app/data/webcam/` per session |
+| Sensor selection | H10 only | Verity Sense streaming is not implemented yet |
+| Preferred sensor | auto | Reserved for future multi-sensor support |
+| ECG save path | `app/data/ecg/` | One gzipped CSV per sensor per session (timestamp, value); written at session stop |
+| Webcam recording | enabled | MP4 saved under `app/data/webcam/` per session; written continuously |
 | Webcam save path | `app/data/webcam/` | Overridable |
-| Riot API integration | disabled until key provided | Manual start/stop + LoL-client detection only in Phase 5; Riot REST API added later |
-| Riot API key | empty | Development key (24 h) or persistent personal key |
+| Logs save path | `app/data/logs/` | Overridable; takes effect after restart |
+| Database path | `app/data/flow_lol.db` | Overridable; takes effect after restart |
+| Riot API integration | disabled until key provided | Manual start/stop + LoL-client detection only; Riot REST API is future work |
+| Riot API key | empty | Not used yet |
 | Game auto-detect | enabled | Detects `League of Legends.exe` / `LeagueClient.exe`; falls back to manual start/stop |
 | Sampling window | 60 s | Matches the best BIRAFFE2 window; overridable |
 | Overlap | 50 % | Matches experiment setup; overridable |
-| Classifier ensemble | all 5 | Toggle individual ECG-only models on/off |
+| Classifier ensemble | all 5 | Toggle individual ECG-only models on/off; odd count required |
 
 ## Classifier strategy
 
@@ -120,11 +122,13 @@ app/
       main_window.py
       settings_dialog.py
       dashboard.py
+      logs_widget.py             <- live ECG plot + log viewer
+      webcam_widget.py           <- recording list / player / delete
       tray_icon.py
       sensor_worker.py            <- PyQt6 thread wrapping SensorManager
     sensors/
       __init__.py
-      polar_h10.py               <- bleak ECG streaming
+      polar_h10.py               <- polar_python ECG streaming
       polar_verity.py            <- optional armband support (stub)
       buffer.py                  <- ECG buffering / windowing
       manager.py                 <- orchestrates H10 + Verity streams
@@ -161,50 +165,48 @@ app/
 
 ## Current status
 
-- **Phase 0 complete.** Project scaffold, settings dialog, config persistence,
-  and placeholder modules are in place under `flow_lol/`.
-- **Phase 1.1 complete.** `scripts/export_models.py` exports five ECG-only
-  classifiers as joblib bundles; `flow_lol/inference/ensemble.py` performs hard
-  majority vote.
-- **Phase 1.2 complete.** BLE ECG streaming module for Polar H10 using `bleak`,
-  ring buffer with sliding windows, sensor manager, PyQt6 worker skeleton, and a
-  small `scripts/scan_polar.py` CLI to discover nearby Polar devices. Verity Sense
-  support is stubbed and will be implemented once the PPG parsing strategy is
-  decided.
-- **Phase 1.3 complete.** `flow_lol/inference/feature_extract.py` extracts the same
-  12 classical HRV features used by the exported models (mean HR, SDNN, RMSSD, pNN50,
-  VLF, LF, HF, LF/HF, TP, sample entropy, DFA α1, DFA α2) using `neurokit2`, and
-  maps them to each model bundle's expected feature order.
-- **Phase 1.4 complete.** `flow_lol/inference/pipeline.py` wires the sensor worker
-  → feature extraction → classifier ensemble, and `main_window.py` connects the
-  Start/Stop buttons to a `SensorWorker`. Predictions are displayed in the status
-  label with vote counts.
-- **Phase 1.5 complete.** `flow_lol/persistence/database.py` and
-  `flow_lol/persistence/repository.py` store sessions, per-window predictions, and
-  sensor events in a local SQLite database (`data/flow_lol.db`). The worker
-  creates a session when started, writes predictions and connection events during
-  streaming, and closes the session when stopped.
-- **Phase 2.0 complete.** `flow_lol/game/detector.py` adds manual match
-  start/stop and optional LoL-process auto-detection (`psutil`). A `matches`
-  table links predictions to individual games, and the toolbar exposes mode
-  selection plus Start/Stop match buttons.
-- **Phase 2.1 complete.** `flow_lol/webcam/recorder.py` records the default
-  webcam to a timestamped MP4 under `data/webcam/` during each session using
-  OpenCV (`mp4v` codec, 640×480, 15 fps). Recording starts when the session
-  starts and stops automatically when the session ends.
-- **Phase 2.2 complete.** `flow_lol/ui/dashboard.py` adds a post-game dashboard
-  with a session selector, match list, simple painted flow timeline, per-session
-  statistics, and a delete button (removes the session + predictions + matches +
-  sensor events from SQLite; leaves ECG/webcam files on disk).
-- **Phase 2.3 complete.** `scripts/build_app.py` runs PyInstaller using
-  `scripts/FlowLoL.spec` (single-folder build) and `scripts/installer.iss` is an
-  Inno Setup installer script that creates a Windows installer, places the app
-  under Program Files, and creates a writable data folder under
-  `%LOCALAPPDATA%\FlowLoL\Data`.
-- **Raw ECG persistence.** `flow_lol/persistence/ecg_writer.py` buffers all
-  incoming ECG samples and writes a gzipped CSV per sensor per session to
-  `data/ecg/`. This was added after the core phase list to match the configured
-  ECG save path.
+All core phases (0 – 2.3) are implemented. Recent work concentrated on making the
+live pipeline robust enough for the lab study.
+
+### Completed recently
+
+- **Model export (`scripts/export_models.py`).** Exports five ECG-only bundles.
+  Classical models are pickled directly; the BIRAFFE2 MLP is exported as a plain
+  dict of weights/scaler so the deployed app does not need the research package.
+  The scaler and outlier bounds are refit on the final feature set after
+  dropping all-NaN columns, fixing a runtime shape mismatch.
+- **H10 streaming (`flow_lol/sensors/polar_h10.py`).** Uses `polar_python`
+  (the same backend as the working polar-ecg-viewer project) instead of raw
+  `bleak`. Handles the Polar PMD control point and ECG notifications. Detects
+  whether Windows already has the H10 connected and reuses the link when
+  possible.
+- **Sensor worker robustness (`flow_lol/ui/sensor_worker.py`).** A failing
+  sensor now emits an error signal but does not crash the whole worker, so the
+  session can continue for webcam/game logging.
+- **UI tabs.** The main window now has three tabs:
+  - **Dashboard** — session/match list and flow timeline.
+  - **Logs** — live rolling ECG plot + on-disk log file viewer.
+  - **Webcam** — list of recordings, built-in player (Play / Pause / Stop),
+    and delete-with-confirmation.
+- **Safe exit.** Toolbar **Exit** button and window close handler stop any
+  running session cleanly before quitting.
+- **Settings storage paths.** Storage tab now lets the user set ECG, webcam,
+  logs, and database paths. Logs path is used immediately on next launch; DB
+  path requires restart.
+- **Webcam finalization (`flow_lol/webcam/recorder.py`).** Uses `avc1` with an
+  `mp4v` fallback and makes sure `VideoWriter.release()` is called so the MP4
+  container is finalised (fixes the missing `moov` atom).
+- **Verity Sense** disabled by default; support is still a stub.
+
+### Known issues / next steps
+
+- [ ] Re-export all five models after the scaler/outlier refit fix in
+      `export_models.py` (currently running / pending).
+- [ ] Verify all five models load without `PicklingError` or shape mismatch.
+- [ ] Test live H10 ECG streaming + predictions in a real session.
+- [ ] Build PyInstaller installer once the live pipeline is verified.
+- [ ] Phase 9+ (AF-01, AF-09..AF-10) remain future work after the lab study
+      data collection.
 
 ## Run / develop
 
@@ -226,10 +228,13 @@ cd C:\Users\user\Downloads\Masterthesis\Code
 python app\scripts\export_models.py
 ```
 
-This writes:
+This writes all five bundles:
 
 * `app/models/biraffe2_svm.joblib`
+* `app/models/biraffe2_knn.joblib`
+* `app/models/biraffe2_rf.joblib`
 * `app/models/irshad_rf.joblib`
+* `app/models/biraffe2_mlp.joblib`
 
 If dataset paths in the YAML configs do not match your local layout, pass
 `--biraffe2-config` and/or `--irshad-config` with corrected paths.
@@ -255,6 +260,6 @@ The installer writes `Output/FlowLoL_Setup.exe` and can be copied to the lab PC.
 ## Notes for deployment
 
 - Use Python 3.11 (stable PyInstaller target).
-- BLE on Windows requires `bleak` + WinRT / `Bleak` backend; no extra driver for most Windows 10/11 machines with built-in Bluetooth 4.0+.
+- BLE on Windows uses `polar_python`, which itself uses `bleak` + WinRT. No extra driver is needed for most Windows 10/11 machines with built-in Bluetooth 4.0+.
 - PyInstaller must bundle `numpy`, `scipy`, `sklearn` joblib models, and OpenCV DLLs.
 - The app stores user data under `%LOCALAPPDATA%\FlowLoL\Data` when installed; the Inno Setup script creates this folder with user-modify permissions so recordings are writable without admin rights.

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from pathlib import Path
+
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
@@ -11,6 +13,7 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMainWindow,
+    QMessageBox,
     QPushButton,
     QStackedWidget,
     QStatusBar,
@@ -100,6 +103,11 @@ class MainWindow(QMainWindow):
         self.logs_btn = self._add_tab_button(toolbar, "Logs", 1)
         self.webcam_btn = self._add_tab_button(toolbar, "Webcam", 2)
 
+        toolbar.addSeparator()
+        exit_btn = QPushButton("Exit")
+        exit_btn.clicked.connect(self._safe_exit)
+        toolbar.addWidget(exit_btn)
+
     def _add_tab_button(self, toolbar: QToolBar, label: str, index: int) -> QPushButton:
         btn = QPushButton(label)
         btn.setCheckable(True)
@@ -120,7 +128,7 @@ class MainWindow(QMainWindow):
         self.dashboard = DashboardWidget()
         self.stack.addWidget(self.dashboard)
 
-        self.logs = LogsWidget()
+        self.logs = LogsWidget(logs_dir=Path(self.settings.logs_save_path))
         self.stack.addWidget(self.logs)
 
         self.webcam = WebcamWidget()
@@ -186,6 +194,29 @@ class MainWindow(QMainWindow):
         self.webcam.refresh_list()
         self._status_label.setText("Session stopped. Dashboard updated.")
         logger.info("Session stopped")
+
+    def _safe_exit(self) -> None:
+        """Stop any running session cleanly before closing the app."""
+        if self.worker is not None and self.worker.isRunning():
+            reply = QMessageBox.question(
+                self,
+                "Exit Flow-LoL",
+                "A session is running. Stop it and exit?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+            self._stop_session()
+        self.settings.save()
+        self.close()
+
+    def closeEvent(self, event: object) -> None:
+        """Intercept window close to ensure clean shutdown."""
+        if self.worker is not None and self.worker.isRunning():
+            self._stop_session()
+        self.settings.save()
+        event.accept()
 
     def _start_match(self) -> None:
         if self.worker is None:

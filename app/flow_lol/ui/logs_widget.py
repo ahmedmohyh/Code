@@ -28,6 +28,13 @@ from flow_lol.utils.paths import default_data_dir
 logger = logging.getLogger(__name__)
 
 
+def _resolve_logs_dir(logs_save_path: str | None = None) -> Path:
+    """Return the active logs directory from settings or default data dir."""
+    if logs_save_path:
+        return Path(logs_save_path)
+    return default_data_dir() / "logs"
+
+
 class ECGPlotWidget(QWidget):
     """Simple rolling ECG plot drawn with QPainter.
 
@@ -117,9 +124,9 @@ class ECGPlotWidget(QWidget):
 class LogViewerWidget(QWidget):
     """List log files and show their contents."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, logs_dir: Path | None = None) -> None:
         super().__init__(parent)
-        self.logs_dir = default_data_dir() / "logs"
+        self.logs_dir = logs_dir or _resolve_logs_dir()
         self._build_ui()
         self.refresh_list()
 
@@ -185,8 +192,9 @@ class LogViewerWidget(QWidget):
 class LogsWidget(QWidget):
     """Combined live ECG + log viewer tab."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(self, parent: QWidget | None = None, logs_dir: Path | None = None) -> None:
         super().__init__(parent)
+        self.logs_dir = logs_dir or _resolve_logs_dir()
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -201,7 +209,7 @@ class LogsWidget(QWidget):
 
         logs_group = QGroupBox("Application logs")
         logs_layout = QVBoxLayout(logs_group)
-        self.log_viewer = LogViewerWidget()
+        self.log_viewer = LogViewerWidget(logs_dir=self.logs_dir)
         logs_layout.addWidget(self.log_viewer)
 
         splitter = QSplitter(Qt.Orientation.Vertical)

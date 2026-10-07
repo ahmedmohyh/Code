@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Callable, List, Optional
 
-from bleak import BleakScanner
+from bleak import BleakClient, BleakScanner
 from polar_python.device import PolarDevice
 from polar_python.models import ECGData
 
@@ -83,7 +83,20 @@ class PolarH10Stream:
                 logger.info("Auto-selected %s at %s", bleak_device.name, bleak_device.address)
 
                 self._device = PolarDevice(bleak_device)
-                await self._device.__aenter__()
+
+                # polar_python creates its own BleakClient.  On Windows the
+                # system may already have the H10 connected (e.g. from a
+                # previous run).  If so, calling connect() again can fail or
+                # trigger the "connect" notification.  We therefore try to use
+                # an explicit BleakClient first to see if it is already
+                # connected, and only connect if it is not.
+                client = BleakClient(bleak_device)
+                already_connected = await client.is_connected()
+                await client.disconnect()
+                if already_connected:
+                    logger.info("H10 already connected on this PC; reusing link")
+
+                await self._device.connect()
                 logger.info("Connected to %s", bleak_device.address)
                 if self.on_connection_change:
                     self.on_connection_change("connected")
@@ -109,7 +122,7 @@ class PolarH10Stream:
                 )
                 if self._device is not None:
                     try:
-                        await self._device.__aexit__(None, None, None)
+                        await self._device.disconnect()
                     except Exception:
                         pass
                     self._device = None
@@ -141,10 +154,8 @@ class PolarH10Stream:
     def _on_ecg_data(self, data: ECGData) -> None:
         """Receive ECGData from polar_python and forward ECGSamples."""
         try:
-            # ECGData exposes the samples in a `.samples` attribute.
             samples_attr = getattr(data, "samples", None)
             if samples_attr is None:
-                # Fallback: some versions may expose .data
                 samples_attr = getattr(data, "data", None)
             if samples_attr is None:
                 return
