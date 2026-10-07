@@ -11,11 +11,11 @@ from flow_lol.utils.paths import ensure_directories
 
 
 def main() -> int:
-    app_logging.setup_logging()
-    ensure_directories()
-
     settings = AppSettings.load()
     settings.save()  # write back with any missing defaults
+
+    app_logging.setup_logging(logs_dir=settings.logs_save_path)
+    ensure_directories()
 
     app = QApplication(sys.argv)
     app.setApplicationName("Flow-LoL")

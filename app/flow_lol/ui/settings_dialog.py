@@ -108,9 +108,34 @@ class SettingsDialog(QDialog):
         webcam_row.addWidget(webcam_btn)
         form.addRow("Webcam save folder:", webcam_row)
 
+        self.logs_path_edit = QLineEdit(self.settings.logs_save_path)
+        self.logs_path_edit.setReadOnly(True)
+        logs_btn = QPushButton("Browse...")
+        logs_btn.clicked.connect(self._browse_logs_path)
+        logs_row = QHBoxLayout()
+        logs_row.addWidget(self.logs_path_edit)
+        logs_row.addWidget(logs_btn)
+        form.addRow("Logs save folder:", logs_row)
+
+        self.db_path_edit = QLineEdit(self.settings.db_path)
+        self.db_path_edit.setReadOnly(True)
+        db_btn = QPushButton("Browse...")
+        db_btn.clicked.connect(self._browse_db_path)
+        db_row = QHBoxLayout()
+        db_row.addWidget(self.db_path_edit)
+        db_row.addWidget(db_btn)
+        form.addRow("Database path:", db_row)
+
         self.webcam_enabled_box = QCheckBox("Record webcam during sessions")
         self.webcam_enabled_box.setChecked(self.settings.webcam_enabled)
         form.addRow(self.webcam_enabled_box)
+
+        note = QLabel(
+            "Changes to storage paths take effect after restarting the app. "
+            "Existing recordings stay in their original locations."
+        )
+        note.setWordWrap(True)
+        form.addRow(note)
 
         return widget
 
@@ -233,6 +258,23 @@ class SettingsDialog(QDialog):
         if path:
             self.webcam_path_edit.setText(path)
 
+    def _browse_logs_path(self) -> None:
+        path = QFileDialog.getExistingDirectory(
+            self, "Select logs save folder", self.logs_path_edit.text()
+        )
+        if path:
+            self.logs_path_edit.setText(path)
+
+    def _browse_db_path(self) -> None:
+        path, _ = QFileDialog.getSaveFileName(
+            self,
+            "Select SQLite database file",
+            self.db_path_edit.text(),
+            "SQLite databases (*.db *.sqlite *.sqlite3);;All files (*)",
+        )
+        if path:
+            self.db_path_edit.setText(path)
+
     def _validate_and_accept(self) -> None:
         if not (self.use_h10_box.isChecked() or self.use_verity_box.isChecked()):
             QMessageBox.warning(self, "Invalid sensors", "Enable at least one sensor.")
@@ -261,6 +303,8 @@ class SettingsDialog(QDialog):
         self.settings.preferred_sensor = self.preferred_sensor_combo.currentText()
         self.settings.ecg_save_path = self.ecg_path_edit.text()
         self.settings.webcam_save_path = self.webcam_path_edit.text()
+        self.settings.logs_save_path = self.logs_path_edit.text()
+        self.settings.db_path = self.db_path_edit.text()
         self.settings.webcam_enabled = self.webcam_enabled_box.isChecked()
         self.settings.auto_detect_game = self.auto_detect_box.isChecked()
         self.settings.riot_api_enabled = self.riot_enabled_box.isChecked()

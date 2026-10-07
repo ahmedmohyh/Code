@@ -22,6 +22,7 @@ class AppSettings:
     # Paths
     ecg_save_path: str = ""
     webcam_save_path: str = ""
+    logs_save_path: str = ""
     db_path: str = ""
 
     # Webcam
@@ -57,6 +58,8 @@ class AppSettings:
             self.ecg_save_path = str(data / "ecg")
         if not self.webcam_save_path:
             self.webcam_save_path = str(data / "webcam")
+        if not self.logs_save_path:
+            self.logs_save_path = str(data / "logs")
         if not self.db_path:
             self.db_path = str(data / "flow_lol.db")
 

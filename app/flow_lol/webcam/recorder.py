@@ -72,7 +72,7 @@ class WebcamRecorder:
             return self._output_path
         self._stop_event.set()
         if self._thread is not None and self._thread.is_alive():
-            self._thread.join(timeout=5.0)
+            self._thread.join(timeout=8.0)
         self._active = False
         logger.info("Webcam recording stopped: %s", self._output_path)
         path = self._output_path
@@ -100,16 +100,33 @@ class WebcamRecorder:
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             cap.set(cv2.CAP_PROP_FPS, self.fps)
 
-            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+            # Use a more robust container codec.  'avc1' generally produces
+            # playable MP4s even if the recording is very short, as long as the
+            # writer is released properly.
+            fourcc = cv2.VideoWriter_fourcc(*"avc1")
             writer = cv2.VideoWriter(
                 str(self._output_path),
                 fourcc,
-                self.fps,
+                float(self.fps),
                 (self.width, self.height),
             )
             if not writer.isOpened():
-                logger.error("Could not open video writer for %s", self._output_path)
-                return
+                # Fallback to mp4v if the H.264 codec is unavailable.
+                logger.warning("avc1 writer not available, falling back to mp4v")
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                writer = cv2.VideoWriter(
+                    str(self._output_path),
+                    fourcc,
+                    float(self.fps),
+                    (self.width, self.height),
+                )
+                if not writer.isOpened():
+                    logger.error("Could not open video writer for %s", self._output_path)
+                    return
+
+            # Read a few frames to stabilise the camera before writing.
+            for _ in range(3):
+                cap.read()
 
             frame_time = 1.0 / self.fps
             while not self._stop_event.is_set():
@@ -118,10 +135,12 @@ class WebcamRecorder:
                     logger.warning("Webcam frame capture failed; stopping")
                     break
                 writer.write(frame)
+                # Small sleep to keep the loop at roughly the target FPS.
                 time.sleep(frame_time)
         except Exception as exc:
             logger.exception("Webcam recorder error: %s", exc)
         finally:
+            # Releasing the writer finalises the MP4 container ('moov' atom).
             if writer is not None:
                 writer.release()
             if cap is not None:

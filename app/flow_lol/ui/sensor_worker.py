@@ -3,6 +3,7 @@
 The worker emits:
   connection_changed(sensor_name, status)
   prediction(sensor_name, prediction_dict)
+  samples(sensor_name, List[ECGSample])
   error(sensor_name, exception)
   match_started(game_mode, detected)
   match_ended()
