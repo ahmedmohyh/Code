@@ -252,3 +252,36 @@ class SessionRepository:
         if self.active_match_id is not None:
             # Safety: if the deleted session had the active match, clear it.
             self.active_match_id = None
+
+    def close_stale_sessions(self) -> int:
+        """Mark every open session as ended (used on startup after a crash).
+
+        Returns the number of sessions that were closed.
+        """
+        with self._Session() as sess:
+            rows = sess.query(Session).filter_by(ended_at=None).all()
+            now = time.time()
+            for row in rows:
+                row.ended_at = now
+            sess.commit()
+        if rows:
+            logger.info("Closed %s stale session(s) left running after a crash", len(rows))
+        return len(rows)
+
+    def delete_all_sessions(self) -> int:
+        """Delete every session and all linked rows. Returns the number of sessions removed."""
+        with self._Session() as sess:
+            n_predictions = sess.query(PredictionRow).delete(synchronize_session=False)
+            n_matches = sess.query(Match).delete(synchronize_session=False)
+            n_events = sess.query(SensorEvent).delete(synchronize_session=False)
+            n_sessions = sess.query(Session).delete(synchronize_session=False)
+            sess.commit()
+        logger.info(
+            "Deleted all sessions (%s), matches (%s), predictions (%s), events (%s)",
+            n_sessions,
+            n_matches,
+            n_predictions,
+            n_events,
+        )
+        self.active_match_id = None
+        return n_sessions

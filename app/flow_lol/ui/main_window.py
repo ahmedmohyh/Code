@@ -44,6 +44,7 @@ class MainWindow(QMainWindow):
         self.worker: SensorWorker | None = None
         self._prediction_count = 0
         self._in_match = False
+        self._webcam_recording = False
 
         self._create_menu()
         self._create_toolbar()
@@ -98,6 +99,12 @@ class MainWindow(QMainWindow):
         toolbar.addWidget(self.stop_match_button)
         toolbar.addSeparator()
 
+        self.toggle_webcam_button = QPushButton("Disable webcam")
+        self.toggle_webcam_button.setEnabled(False)
+        self.toggle_webcam_button.clicked.connect(self._toggle_webcam)
+        toolbar.addWidget(self.toggle_webcam_button)
+        toolbar.addSeparator()
+
         self._tab_buttons: list[QPushButton] = []
         self.dashboard_btn = self._add_tab_button(toolbar, "Dashboard", 0)
         self.logs_btn = self._add_tab_button(toolbar, "Logs", 1)
@@ -131,7 +138,7 @@ class MainWindow(QMainWindow):
         self.logs = LogsWidget(logs_dir=Path(self.settings.logs_save_path))
         self.stack.addWidget(self.logs)
 
-        self.webcam = WebcamWidget()
+        self.webcam = WebcamWidget(on_toggle=self._toggle_webcam)
         self.stack.addWidget(self.webcam)
 
         # Status label sits above the dashboard
@@ -171,11 +178,14 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(self._on_error)
         self.worker.match_started.connect(self._on_match_started)
         self.worker.match_ended.connect(self._on_match_ended)
+        self.worker.webcam_changed.connect(self._on_webcam_changed)
         self.worker.start()
         self.start_button.setEnabled(False)
         self.stop_button.setEnabled(True)
         self.game_mode_combo.setEnabled(True)
         self.start_match_button.setEnabled(True)
+        self.toggle_webcam_button.setEnabled(False)
+        self.toggle_webcam_button.setText("Disable webcam")
         self._status_label.setText("Session started. Connecting sensors...")
         logger.info("Session started")
 
@@ -188,6 +198,10 @@ class MainWindow(QMainWindow):
         self.game_mode_combo.setEnabled(False)
         self.start_match_button.setEnabled(False)
         self.stop_match_button.setEnabled(False)
+        self.toggle_webcam_button.setEnabled(False)
+        self.toggle_webcam_button.setText("Disable webcam")
+        self.webcam.set_recording_state(False, None)
+        self._webcam_recording = False
         self._in_match = False
         self.dashboard.refresh_sessions()
         self.logs.refresh_logs()
@@ -228,6 +242,25 @@ class MainWindow(QMainWindow):
         if self.worker is None:
             return
         self.worker.end_match()
+
+    def _toggle_webcam(self) -> None:
+        """Tell the worker to start or stop webcam recording."""
+        if self.worker is None:
+            return
+        self.worker.toggle_webcam()
+
+    def _on_webcam_changed(self, recording: bool, path: object) -> None:
+        """Update UI when the worker reports a webcam state change."""
+        self._webcam_recording = recording
+        self.toggle_webcam_button.setEnabled(True)
+        self.toggle_webcam_button.setText("Disable webcam" if recording else "Enable webcam")
+        self.webcam.set_recording_state(recording, path)
+        self._update_status()
+        status = "Webcam recording started" if recording else "Webcam recording stopped"
+        if path:
+            self._status_label.setText(f"{status}: {path}")
+        else:
+            self._status_label.setText(status)
 
     def _on_connection_changed(self, name: str, status: str) -> None:
         self._status_label.setText(f"[{name}] {status}")
@@ -290,7 +323,7 @@ class MainWindow(QMainWindow):
 
         self.status.showMessage(
             f"Sensors: {sensor_text} | Models: {model_text} | "
-            f"Webcam: {'on' if self.settings.webcam_enabled else 'off'} | "
+            f"Webcam: {'recording' if self._webcam_recording else 'off'} | "
             f"Auto-detect: {'on' if self.settings.auto_detect_game else 'off'} | "
             f"Match: {match_text}"
         )

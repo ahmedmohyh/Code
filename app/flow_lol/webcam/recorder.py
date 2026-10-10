@@ -80,6 +80,10 @@ class WebcamRecorder:
         self._thread = None
         return path
 
+    def is_recording(self) -> bool:
+        """Return True if the recorder is currently active."""
+        return self._active
+
     def _record_loop(self) -> None:
         try:
             import cv2

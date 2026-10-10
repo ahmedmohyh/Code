@@ -177,17 +177,29 @@ live pipeline robust enough for the lab study.
   dropping all-NaN columns, fixing a runtime shape mismatch.
 - **H10 streaming (`flow_lol/sensors/polar_h10.py`).** Uses `polar_python`
   (the same backend as the working polar-ecg-viewer project) instead of raw
-  `bleak`. Handles the Polar PMD control point and ECG notifications. Detects
-  whether Windows already has the H10 connected and reuses the link when
-  possible.
+  `bleak`. Handles the Polar PMD control point and ECG notifications.
+  Pairing is now reactive: the app only calls `BleakClient.pair()` if starting
+  the ECG stream actually fails with a Windows "Insufficient Authentication"
+  GATT error. If Windows has already connected the H10 as a generic
+  heart-rate device, the user must remove it from Windows Bluetooth settings
+  and let the app manage the connection exclusively.
 - **Sensor worker robustness (`flow_lol/ui/sensor_worker.py`).** A failing
   sensor now emits an error signal but does not crash the whole worker, so the
-  session can continue for webcam/game logging.
+  session can continue for game logging. Webcam recording is only started after
+  at least one sensor connects; if no sensor connects, the webcam is skipped. Once
+  the webcam is recording, a toolbar button and the Webcam tab both let the user
+  disable or re-enable it at any time during the session.
 - **UI tabs.** The main window now has three tabs:
-  - **Dashboard** — session/match list and flow timeline.
-  - **Logs** — live rolling ECG plot + on-disk log file viewer.
+  - **Dashboard** — session/match list and flow timeline, plus **Clear all
+    sessions** and **Mark selected session as finished** buttons. On startup,
+    any sessions left open after an app crash are automatically closed so they
+    no longer appear as "running".
+  - **Logs** — live rolling ECG plot + on-disk log file viewer, now with a
+    **Delete selected log** button.
   - **Webcam** — list of recordings, built-in player (Play / Pause / Stop),
-    and delete-with-confirmation.
+    live webcam enable/disable toggle, and delete-with-confirmation. Deleting
+    a video now releases the media-player file handle first so Windows no
+    longer reports the file as in use.
 - **Safe exit.** Toolbar **Exit** button and window close handler stop any
   running session cleanly before quitting.
 - **Settings storage paths.** Storage tab now lets the user set ECG, webcam,

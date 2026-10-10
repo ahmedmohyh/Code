@@ -1,10 +1,10 @@
-﻿"""Webcam recordings tab: list, play, and delete MP4 recordings."""
+"""Webcam recordings tab: list, play, and delete MP4 recordings."""
 
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer
@@ -31,8 +31,13 @@ logger = logging.getLogger(__name__)
 class WebcamWidget(QWidget):
     """Tab for managing webcam recordings inside the app."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        on_toggle: Optional[Callable[[], None]] = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
+        self._on_toggle = on_toggle
         self.webcam_dir = default_data_dir() / "webcam"
         self._current_path: Optional[Path] = None
 
@@ -65,7 +70,7 @@ class WebcamWidget(QWidget):
 
         left_group.setMaximumWidth(350)
 
-        right_group = QGroupBox("Preview")
+        right_group = QGroupBox("Preview / Live control")
         right_layout = QVBoxLayout(right_group)
         right_layout.addWidget(self.video_widget, stretch=1)
 
@@ -81,8 +86,18 @@ class WebcamWidget(QWidget):
         controls.addWidget(self.stop_btn)
         controls.addStretch()
 
-        self.info_label = QLabel("Select a recording to preview")
+        self.live_status_label = QLabel("No active webcam recording")
+        self.live_status_label.setWordWrap(True)
+        right_layout.addWidget(self.live_status_label)
+
+        self.toggle_btn = QPushButton("Enable webcam")
+        self.toggle_btn.setEnabled(self._on_toggle is not None)
+        self.toggle_btn.clicked.connect(self._request_toggle)
+        right_layout.addWidget(self.toggle_btn)
+
         right_layout.addLayout(controls)
+
+        self.info_label = QLabel("Select a recording to preview")
         right_layout.addWidget(self.info_label)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
@@ -128,6 +143,23 @@ class WebcamWidget(QWidget):
     def _stop(self) -> None:
         self.player.stop()
 
+    def _request_toggle(self) -> None:
+        if self._on_toggle is not None:
+            self._on_toggle()
+
+    def set_recording_state(self, recording: bool, path: Optional[Path]) -> None:
+        """Update the live-control UI from the worker's webcam state."""
+        if recording and path is not None:
+            self.live_status_label.setText(f"Recording: {path.name}")
+            self.toggle_btn.setText("Disable webcam")
+        elif recording:
+            self.live_status_label.setText("Recording active")
+            self.toggle_btn.setText("Disable webcam")
+        else:
+            self.live_status_label.setText("No active webcam recording")
+            self.toggle_btn.setText("Enable webcam")
+        self.toggle_btn.setEnabled(self._on_toggle is not None)
+
     def _delete_selected(self) -> None:
         item = self.file_list.currentItem()
         if item is None:
@@ -147,7 +179,10 @@ class WebcamWidget(QWidget):
             return
 
         try:
+            # Release the media player's file handle before deleting on Windows.
             self._stop()
+            self.player.setSource(QUrl())
+            self._current_path = None
             path.unlink()
             self.refresh_list()
             logger.info("Deleted webcam recording %s", path)

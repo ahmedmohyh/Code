@@ -1,8 +1,12 @@
 """Polar H10 BLE ECG streaming.
 
 Uses the ``polar_python`` package to handle the Polar PMD protocol.  This is
-the same backend used by the working polar-ecg-viewer project and avoids the
-custom GATT issues we hit with raw bleak on Windows.
+the same backend used by the working polar-ecg-viewer project.
+
+Important Windows note: if the H10 is already connected to Windows as a
+generic heart-rate device, ``polar_python`` cannot open the PMD service.  In
+that case the user must remove the H10 from Windows Bluetooth settings and
+let the app manage the connection exclusively.
 """
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ import logging
 import time
 from typing import Callable, List, Optional
 
-from bleak import BleakClient, BleakScanner
+from bleak import BleakScanner
 from polar_python.device import PolarDevice
 from polar_python.models import ECGData
 
@@ -78,34 +82,46 @@ class PolarH10Stream:
                     )
 
                 if bleak_device is None:
-                    raise RuntimeError(f"No {device_name} device found")
+                    raise RuntimeError(
+                        f"No {device_name} device found. Make sure the H10 is blinking blue and not already connected to Windows."
+                    )
 
-                logger.info("Auto-selected %s at %s", bleak_device.name, bleak_device.address)
+                logger.info(
+                    "Auto-selected %s at %s", bleak_device.name, bleak_device.address
+                )
 
                 self._device = PolarDevice(bleak_device)
-
-                # polar_python creates its own BleakClient.  On Windows the
-                # system may already have the H10 connected (e.g. from a
-                # previous run).  If so, calling connect() again can fail or
-                # trigger the "connect" notification.  We therefore try to use
-                # an explicit BleakClient first to see if it is already
-                # connected, and only connect if it is not.
-                client = BleakClient(bleak_device)
-                already_connected = await client.is_connected()
-                await client.disconnect()
-                if already_connected:
-                    logger.info("H10 already connected on this PC; reusing link")
-
                 await self._device.connect()
                 logger.info("Connected to %s", bleak_device.address)
+
                 if self.on_connection_change:
                     self.on_connection_change("connected")
 
-                await self._device.start_ecg_stream(
-                    ecg_callback=self._on_ecg_data,
-                    sample_rate=ECG_SAMPLE_RATE,
-                    resolution=14,
-                )
+                try:
+                    await self._device.start_ecg_stream(
+                        ecg_callback=self._on_ecg_data,
+                        sample_rate=ECG_SAMPLE_RATE,
+                        resolution=14,
+                    )
+                except Exception as stream_exc:
+                    err = str(stream_exc)
+                    if "Insufficient Authentication" in err or "authentication" in err.lower():
+                        logger.warning(
+                            "ECG stream needs pairing; calling OS pair() for %s",
+                            bleak_device.address,
+                        )
+                        try:
+                            await self._device._client.pair()
+                            logger.info("Pairing completed; retrying ECG stream")
+                        except Exception as pair_exc:
+                            logger.warning("Pairing call failed: %s", pair_exc)
+                        await self._device.start_ecg_stream(
+                            ecg_callback=self._on_ecg_data,
+                            sample_rate=ECG_SAMPLE_RATE,
+                            resolution=14,
+                        )
+                    else:
+                        raise
 
                 logger.info("ECG stream started")
                 self._running = True
@@ -114,12 +130,22 @@ class PolarH10Stream:
                 return
             except Exception as exc:
                 last_exc = exc
+                err = str(exc)
                 logger.warning(
                     "H10 connection attempt %d/%d failed: %s",
                     attempt,
                     max_attempts,
                     exc,
                 )
+
+                # If Windows already holds the connection, the failure usually
+                # mentions GATT authentication or that the device is unavailable.
+                if "Insufficient Authentication" in err or "authentication" in err.lower():
+                    logger.warning(
+                        "Pairing may be required. Remove the H10 from Windows Bluetooth, "
+                        "put the strap back on to make it blink blue, and try again."
+                    )
+
                 if self._device is not None:
                     try:
                         await self._device.disconnect()
@@ -132,7 +158,10 @@ class PolarH10Stream:
         logger.exception("Failed to start H10 stream after %d attempts", max_attempts)
         if self.on_error and last_exc is not None:
             self.on_error(last_exc)
-        raise last_exc if last_exc is not None else RuntimeError("Failed to start H10 stream")
+        raise last_exc if last_exc is not None else RuntimeError(
+            "Failed to start H10 stream. If Windows shows the H10 as connected, "
+            "remove it from Windows Bluetooth and let the app connect directly."
+        )
 
     async def stop(self) -> None:
         """Stop streaming and disconnect."""

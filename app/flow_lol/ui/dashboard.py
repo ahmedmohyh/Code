@@ -157,6 +157,11 @@ class DashboardWidget(QWidget):
         refresh_btn = QPushButton("Refresh")
         refresh_btn.clicked.connect(self.refresh_sessions)
         header.addWidget(refresh_btn)
+
+        clear_all_btn = QPushButton("Clear all sessions")
+        clear_all_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; }")
+        clear_all_btn.clicked.connect(self._clear_all_sessions)
+        header.addWidget(clear_all_btn)
         layout.addLayout(header)
 
         # Splitter: timeline + details
@@ -178,8 +183,14 @@ class DashboardWidget(QWidget):
         self.match_list = QListWidget()
         details_layout.addWidget(self.match_list)
 
+        self.mark_finished_btn = QPushButton("Mark selected session as finished")
+        self.mark_finished_btn.setEnabled(False)
+        self.mark_finished_btn.clicked.connect(self._mark_selected_finished)
+        details_layout.addWidget(self.mark_finished_btn)
+
         self.delete_btn = QPushButton("Delete selected session data")
         self.delete_btn.setEnabled(False)
+        self.delete_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; }")
         self.delete_btn.clicked.connect(self._delete_selected_session)
         details_layout.addWidget(self.delete_btn)
 
@@ -212,6 +223,9 @@ class DashboardWidget(QWidget):
 
     def _show_session(self, session: Optional[Dict[str, Any]]) -> None:
         self.delete_btn.setEnabled(session is not None)
+        self.mark_finished_btn.setEnabled(
+            session is not None and session.get("ended_at") is None
+        )
         if session is None:
             self.details_label.setText("No session selected.")
             self.match_list.clear()
@@ -252,6 +266,18 @@ class DashboardWidget(QWidget):
 
         self.timeline.set_data(predictions, matches)
 
+    def _mark_selected_finished(self) -> None:
+        index = self.session_combo.currentIndex()
+        if index < 0 or not self._sessions:
+            return
+        session = self._sessions[index]
+        session_id = session["id"]
+        if session.get("ended_at") is not None:
+            return
+        self.repo.end_session(session_id)
+        logger.info("Manually marked session %s as finished", session_id)
+        self.refresh_sessions()
+
     def _delete_selected_session(self) -> None:
         index = self.session_combo.currentIndex()
         if index < 0 or not self._sessions:
@@ -262,9 +288,27 @@ class DashboardWidget(QWidget):
             self,
             "Delete session data",
             f"Delete session {session_id} from the local database?\n"
-            "This does not delete ECG Excel files or webcam MP4s.",
+            "This does not delete ECG CSV files or webcam MP4s.",
         )
         if reply == QMessageBox.StandardButton.Yes:
             self.repo.delete_session(session_id)
             logger.info("Deleted session %s", session_id)
             self.refresh_sessions()
+
+    def _clear_all_sessions(self) -> None:
+        if not self._sessions:
+            QMessageBox.information(self, "Clear all sessions", "There are no sessions to delete.")
+            return
+        reply = QMessageBox.question(
+            self,
+            "Clear all sessions",
+            f"Delete all {len(self._sessions)} session(s) from the local database?\n"
+            "This cannot be undone and does not delete ECG CSV files or webcam MP4s.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+        n_deleted = self.repo.delete_all_sessions()
+        logger.info("Cleared all sessions from database (%s deleted)", n_deleted)
+        self.refresh_sessions()

@@ -7,6 +7,7 @@ The worker emits:
   error(sensor_name, exception)
   match_started(game_mode, detected)
   match_ended()
+  webcam_changed(recording: bool, output_path: Optional[Path])
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
@@ -36,6 +38,7 @@ class SensorWorker(QThread):
     error = pyqtSignal(str, object)
     match_started = pyqtSignal(str, bool)
     match_ended = pyqtSignal()
+    webcam_changed = pyqtSignal(bool, object)  # recording: bool, output_path: Optional[Path]
 
     def __init__(
         self,
@@ -75,11 +78,8 @@ class SensorWorker(QThread):
         self.repository = SessionRepository(self.settings.db_path)
         self.session_id = self.repository.create_session(self.settings)
 
-        self.webcam = WebcamRecorder(
-            output_dir=self.settings.webcam_save_path,
-            enabled=self.settings.webcam_enabled,
-        )
-        self.webcam.start(self.session_id)
+        # Webcam is started only after the sensor manager connects successfully.
+        self.webcam: Optional[WebcamRecorder] = None
 
         self.ecg_writer = RawECGWriter(
             output_dir=self.settings.ecg_save_path,
@@ -113,9 +113,21 @@ class SensorWorker(QThread):
                 RuntimeError(
                     "No ECG sensor connected. "
                     "Check Bluetooth pairing and that the H10 is blinking blue, "
-                    "then press Stop session and Start session again."
+                    "then remove the H10 from Windows Bluetooth and press Start session again."
                 ),
             )
+            logger.warning("No sensor buffers available; skipping webcam recording")
+        elif self.settings.webcam_enabled:
+            logger.info("Sensor connected; starting webcam recording")
+            self.webcam = WebcamRecorder(
+                output_dir=self.settings.webcam_save_path,
+                enabled=True,
+            )
+            path = self.webcam.start(self.session_id)
+            self.webcam_changed.emit(True, path)
+        else:
+            logger.info("Sensor connected but webcam disabled in settings")
+            self.webcam_changed.emit(False, None)
 
         try:
             while not self._stop_event.is_set():
@@ -192,6 +204,30 @@ class SensorWorker(QThread):
     async def _end_match(self) -> None:
         if self.detector is not None:
             await self.detector.end_match()
+
+    def toggle_webcam(self) -> None:
+        """Request a webcam start/stop toggle from the UI thread."""
+        if self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(self._toggle_webcam(), self._loop)
+
+    async def _toggle_webcam(self) -> None:
+        """Start or stop the webcam recorder on the worker thread."""
+        if self.session_id is None:
+            return
+        if self.webcam is not None and self.webcam.is_recording():
+            path = self.webcam.stop()
+            self.webcam = None
+            self.webcam_changed.emit(False, path)
+            logger.info("Webcam disabled by user; stopped %s", path)
+        else:
+            self.webcam = WebcamRecorder(
+                output_dir=self.settings.webcam_save_path,
+                enabled=True,
+            )
+            path = self.webcam.start(self.session_id)
+            self.webcam_changed.emit(True, path)
+            logger.info("Webcam enabled by user; started %s", path)
 
     def stop(self) -> None:
         self._stop_event.set()

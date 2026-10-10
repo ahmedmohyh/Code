@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSplitter,
@@ -122,7 +123,7 @@ class ECGPlotWidget(QWidget):
 
 
 class LogViewerWidget(QWidget):
-    """List log files and show their contents."""
+    """List log files, show their contents, and delete selected files."""
 
     def __init__(self, parent: QWidget | None = None, logs_dir: Path | None = None) -> None:
         super().__init__(parent)
@@ -144,6 +145,11 @@ class LogViewerWidget(QWidget):
         self.refresh_btn = QPushButton("Refresh")
         self.refresh_btn.clicked.connect(self.refresh_list)
         left.addWidget(self.refresh_btn)
+
+        self.delete_btn = QPushButton("Delete selected log")
+        self.delete_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; }")
+        self.delete_btn.clicked.connect(self._delete_selected)
+        left.addWidget(self.delete_btn)
 
         left_widget = QWidget()
         left_widget.setLayout(left)
@@ -187,6 +193,32 @@ class LogViewerWidget(QWidget):
                 scrollbar.setValue(scrollbar.maximum())
         except Exception as exc:
             self.text_view.setPlainText(f"Could not read {path}: {exc}")
+
+    def _delete_selected(self) -> None:
+        item = self.file_list.currentItem()
+        if item is None:
+            QMessageBox.information(self, "Delete", "No log file selected.")
+            return
+        path_str = item.data(Qt.ItemDataRole.UserRole)
+        path = Path(path_str)
+
+        reply = QMessageBox.question(
+            self,
+            "Delete log file",
+            f"Delete {path.name}?\nThis cannot be undone.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            path.unlink()
+            self.refresh_list()
+            logger.info("Deleted log file %s", path)
+        except Exception as exc:
+            QMessageBox.critical(self, "Error", f"Could not delete file:\n{exc}")
+            logger.error("Failed to delete %s: %s", path, exc)
 
 
 class LogsWidget(QWidget):
