@@ -1,4 +1,4 @@
-"""Webcam recordings tab: list, play, and delete MP4 recordings."""
+"""Webcam recordings tab with a modern card-based layout."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -23,6 +22,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from flow_lol.ui.components import CardWidget, CompactActionBar, ToggleActionButton
+from flow_lol.ui.styles import Colors, Spacing
 from flow_lol.utils.paths import default_data_dir
 
 logger = logging.getLogger(__name__)
@@ -50,60 +51,83 @@ class WebcamWidget(QWidget):
 
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Spacing.MD)
 
-        left_group = QGroupBox("Recordings")
-        left_layout = QVBoxLayout(left_group)
+        # Left: recordings list
+        left_card = CardWidget("Recordings")
+        left_layout = left_card.content_layout()
 
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.file_list.setAlternatingRowColors(True)
         self.file_list.currentItemChanged.connect(self._on_file_selected)
         left_layout.addWidget(self.file_list)
 
-        self.refresh_btn = QPushButton("Refresh")
+        actions = CompactActionBar()
+        self.refresh_btn = actions.add_button("🔄 Refresh")
         self.refresh_btn.clicked.connect(self.refresh_list)
-        left_layout.addWidget(self.refresh_btn)
-
-        self.delete_btn = QPushButton("Delete selected")
-        self.delete_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; }")
+        self.delete_btn = actions.add_button("🗑 Delete")
+        self.delete_btn.setProperty("role", "danger")
         self.delete_btn.clicked.connect(self._delete_selected)
-        left_layout.addWidget(self.delete_btn)
+        actions.add_stretch()
+        left_layout.addWidget(actions)
 
-        left_group.setMaximumWidth(350)
+        left_card.setMaximumWidth(360)
 
-        right_group = QGroupBox("Preview / Live control")
-        right_layout = QVBoxLayout(right_group)
+        # Right: preview + live control
+        right_card = CardWidget("Preview / live control")
+        right_layout = right_card.content_layout()
         right_layout.addWidget(self.video_widget, stretch=1)
 
+        self.live_status_label = QLabel("No active webcam recording")
+        self.live_status_label.setWordWrap(True)
+        self.live_status_label.setProperty("role", "muted")
+        right_layout.addWidget(self.live_status_label)
+
         controls = QHBoxLayout()
-        self.play_btn = QPushButton("Play")
+        controls.setSpacing(Spacing.SM)
+
+        self.play_btn = QPushButton("▶")
+        self.play_btn.setProperty("role", "icon")
+        self.play_btn.setToolTip("Play")
         self.play_btn.clicked.connect(self._play)
-        self.pause_btn = QPushButton("Pause")
+
+        self.pause_btn = QPushButton("⏸")
+        self.pause_btn.setProperty("role", "icon")
+        self.pause_btn.setToolTip("Pause")
         self.pause_btn.clicked.connect(self._pause)
-        self.stop_btn = QPushButton("Stop")
+
+        self.stop_btn = QPushButton("⏹")
+        self.stop_btn.setProperty("role", "icon")
+        self.stop_btn.setToolTip("Stop")
         self.stop_btn.clicked.connect(self._stop)
+
         controls.addWidget(self.play_btn)
         controls.addWidget(self.pause_btn)
         controls.addWidget(self.stop_btn)
         controls.addStretch()
 
-        self.live_status_label = QLabel("No active webcam recording")
-        self.live_status_label.setWordWrap(True)
-        right_layout.addWidget(self.live_status_label)
+        right_layout.addLayout(controls)
 
-        self.toggle_btn = QPushButton("Enable webcam")
+        self.toggle_btn = ToggleActionButton(
+            idle_text="▶  Enable webcam",
+            active_text="■  Disable webcam",
+            idle_role="primary",
+            active_role="danger",
+        )
         self.toggle_btn.setEnabled(self._on_toggle is not None)
         self.toggle_btn.clicked.connect(self._request_toggle)
         right_layout.addWidget(self.toggle_btn)
 
-        right_layout.addLayout(controls)
-
         self.info_label = QLabel("Select a recording to preview")
+        self.info_label.setProperty("role", "muted")
         right_layout.addWidget(self.info_label)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.addWidget(left_group)
-        splitter.addWidget(right_group)
-        splitter.setSizes([300, 550])
+        splitter.addWidget(left_card)
+        splitter.addWidget(right_card)
+        splitter.setSizes([320, 560])
 
         layout.addWidget(splitter)
 
@@ -131,6 +155,7 @@ class WebcamWidget(QWidget):
         self._current_path = path
         size_mb = path.stat().st_size / (1024 * 1024)
         self.info_label.setText(f"{path.name} ({size_mb:.1f} MB)")
+        self.info_label.setProperty("role", "")
         self._stop()
         self.player.setSource(QUrl.fromLocalFile(str(path)))
 
@@ -149,15 +174,16 @@ class WebcamWidget(QWidget):
 
     def set_recording_state(self, recording: bool, path: Optional[Path]) -> None:
         """Update the live-control UI from the worker's webcam state."""
+        self.toggle_btn.set_active(recording)
         if recording and path is not None:
             self.live_status_label.setText(f"Recording: {path.name}")
-            self.toggle_btn.setText("Disable webcam")
+            self.live_status_label.setProperty("role", "")
         elif recording:
             self.live_status_label.setText("Recording active")
-            self.toggle_btn.setText("Disable webcam")
+            self.live_status_label.setProperty("role", "")
         else:
             self.live_status_label.setText("No active webcam recording")
-            self.toggle_btn.setText("Enable webcam")
+            self.live_status_label.setProperty("role", "muted")
         self.toggle_btn.setEnabled(self._on_toggle is not None)
 
     def _delete_selected(self) -> None:
@@ -171,7 +197,7 @@ class WebcamWidget(QWidget):
         reply = QMessageBox.question(
             self,
             "Delete recording",
-            f"Delete {path.name}?\nThis cannot be undone.",
+            f"Delete {path.name}?<br>This cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )

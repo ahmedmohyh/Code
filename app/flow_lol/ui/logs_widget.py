@@ -1,4 +1,4 @@
-"""Live logs tab: real-time ECG signal + on-disk log file viewer."""
+"""Live ECG + on-disk log viewer tab with a modern card-based layout."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QPainter, QPen
 from PyQt6.QtWidgets import (
     QAbstractItemView,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -24,6 +23,8 @@ from PyQt6.QtWidgets import (
 )
 
 from flow_lol.sensors.buffer import ECGSample
+from flow_lol.ui.components import CardWidget, CompactActionBar
+from flow_lol.ui.styles import Colors, Spacing
 from flow_lol.utils.paths import default_data_dir
 
 logger = logging.getLogger(__name__)
@@ -47,8 +48,9 @@ class ECGPlotWidget(QWidget):
         self.window_seconds = window_seconds
         self.samples: List[ECGSample] = []
         self.sensor_name: str = ""
-        self.setMinimumHeight(160)
-        self.setBackgroundRole(self.backgroundRole())
+        self.setMinimumHeight(180)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"background: {Colors.DARK_PANEL};")
 
     def set_sensor_name(self, name: str) -> None:
         self.sensor_name = name
@@ -79,10 +81,10 @@ class ECGPlotWidget(QWidget):
     def _draw(self, painter: QPainter) -> None:
         width = self.width()
         height = self.height()
-        painter.fillRect(0, 0, width, height, QColor(30, 30, 30))
+        painter.fillRect(0, 0, width, height, QColor(Colors.DARK_PANEL))
 
         if len(self.samples) < 2:
-            painter.setPen(QColor(200, 200, 200))
+            painter.setPen(QColor(Colors.TEXT_MUTED))
             painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, "No ECG data yet.")
             return
 
@@ -97,12 +99,18 @@ class ECGPlotWidget(QWidget):
         t1 = self.samples[-1].timestamp
         duration = max(t1 - t0, 0.001)
 
-        pen = QPen(QColor(0, 255, 128))
+        # Grid
+        painter.setPen(QPen(QColor(Colors.DARK_PANEL_LIGHT), 1, Qt.PenStyle.DotLine))
+        for i in range(1, 5):
+            y = int(height * i / 5)
+            painter.drawLine(0, y, width, y)
+
+        pen = QPen(QColor(Colors.SUCCESS))
         pen.setWidth(2)
         painter.setPen(pen)
 
         points: List[tuple[int, int]] = []
-        margin = 10
+        margin = 12
         plot_w = width - 2 * margin
         plot_h = height - 2 * margin
         for s in self.samples:
@@ -113,7 +121,7 @@ class ECGPlotWidget(QWidget):
         for i in range(1, len(points)):
             painter.drawLine(points[i - 1][0], points[i - 1][1], points[i][0], points[i][1])
 
-        painter.setPen(QColor(200, 200, 200))
+        painter.setPen(QColor(Colors.TEXT_MUTED))
         painter.drawText(
             margin,
             margin + 12,
@@ -131,37 +139,44 @@ class LogViewerWidget(QWidget):
         self._build_ui()
         self.refresh_list()
 
+    def set_logs_dir(self, logs_dir: Path) -> None:
+        self.logs_dir = logs_dir
+        self.refresh_list()
+
     def _build_ui(self) -> None:
         layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Spacing.MD)
 
         # Left: file list
-        left = QVBoxLayout()
+        left_card = CardWidget("Log files")
+        left_layout = left_card.content_layout()
+
         self.file_list = QListWidget()
         self.file_list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.file_list.setAlternatingRowColors(True)
         self.file_list.currentItemChanged.connect(self._on_file_selected)
-        left.addWidget(QLabel("Log files"))
-        left.addWidget(self.file_list)
+        left_layout.addWidget(self.file_list)
 
-        self.refresh_btn = QPushButton("Refresh")
+        actions = CompactActionBar()
+        self.refresh_btn = actions.add_button("🔄 Refresh")
         self.refresh_btn.clicked.connect(self.refresh_list)
-        left.addWidget(self.refresh_btn)
-
-        self.delete_btn = QPushButton("Delete selected log")
-        self.delete_btn.setStyleSheet("QPushButton { background-color: #f44336; color: white; }")
+        self.delete_btn = actions.add_button("🗑 Delete")
+        self.delete_btn.setProperty("role", "danger")
         self.delete_btn.clicked.connect(self._delete_selected)
-        left.addWidget(self.delete_btn)
+        actions.add_stretch()
+        left_layout.addWidget(actions)
 
-        left_widget = QWidget()
-        left_widget.setLayout(left)
-        left_widget.setMaximumWidth(300)
+        left_card.setMaximumWidth(320)
+        layout.addWidget(left_card)
 
         # Right: text viewer
+        right_card = CardWidget("Contents")
         self.text_view = QPlainTextEdit()
         self.text_view.setReadOnly(True)
         self.text_view.setLineWrapMode(QPlainTextEdit.LineWrapMode.NoWrap)
-
-        layout.addWidget(left_widget)
-        layout.addWidget(self.text_view, stretch=1)
+        right_card.content_layout().addWidget(self.text_view)
+        layout.addWidget(right_card, stretch=1)
 
     def refresh_list(self) -> None:
         self.file_list.clear()
@@ -186,7 +201,6 @@ class LogViewerWidget(QWidget):
         path = current.data(Qt.ItemDataRole.UserRole)
         try:
             text = Path(path).read_text(encoding="utf-8", errors="replace")
-            # Show the newest lines at the bottom by default
             self.text_view.setPlainText(text)
             scrollbar = self.text_view.verticalScrollBar()
             if scrollbar is not None:
@@ -205,7 +219,7 @@ class LogViewerWidget(QWidget):
         reply = QMessageBox.question(
             self,
             "Delete log file",
-            f"Delete {path.name}?\nThis cannot be undone.",
+            f"Delete {path.name}?<br>This cannot be undone.",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             QMessageBox.StandardButton.No,
         )
@@ -229,31 +243,41 @@ class LogsWidget(QWidget):
         self.logs_dir = logs_dir or _resolve_logs_dir()
         self._build_ui()
 
+    def set_logs_dir(self, logs_dir: Path) -> None:
+        self.logs_dir = logs_dir
+        self.log_viewer.set_logs_dir(logs_dir)
+
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Spacing.MD)
 
-        ecg_group = QGroupBox("Live ECG")
-        ecg_layout = QVBoxLayout(ecg_group)
+        splitter = QSplitter(Qt.Orientation.Vertical)
+
+        ecg_card = CardWidget("Live ECG")
+        ecg_layout = ecg_card.content_layout()
         self.ecg_plot = ECGPlotWidget(window_seconds=10.0)
         ecg_layout.addWidget(self.ecg_plot)
         self.ecg_info = QLabel("Sensor: -")
+        self.ecg_info.setProperty("role", "muted")
         ecg_layout.addWidget(self.ecg_info)
 
-        logs_group = QGroupBox("Application logs")
-        logs_layout = QVBoxLayout(logs_group)
+        logs_card = CardWidget("Application logs")
+        logs_layout = logs_card.content_layout()
         self.log_viewer = LogViewerWidget(logs_dir=self.logs_dir)
         logs_layout.addWidget(self.log_viewer)
 
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.addWidget(ecg_group)
-        splitter.addWidget(logs_group)
-        splitter.setSizes([250, 350])
+        splitter.addWidget(ecg_card)
+        splitter.addWidget(logs_card)
+        splitter.setSizes([320, 380])
         layout.addWidget(splitter)
 
     def add_samples(self, sensor_name: str, samples: List[ECGSample]) -> None:
         self.ecg_plot.set_sensor_name(sensor_name)
         self.ecg_plot.add_samples(samples)
-        self.ecg_info.setText(f"Sensor: {sensor_name} | {len(self.ecg_plot.samples)} samples in view")
+        self.ecg_info.setText(
+            f"Sensor: {sensor_name} | {len(self.ecg_plot.samples)} samples in view"
+        )
 
     def refresh_logs(self) -> None:
         self.log_viewer.refresh_list()

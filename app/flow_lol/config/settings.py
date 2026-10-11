@@ -16,14 +16,14 @@ class AppSettings:
 
     # Sensor
     use_h10: bool = True
-    use_verity: bool = False  # Verity Sense streaming is not implemented yet
-    preferred_sensor: str = "auto"  # "auto", "h10", "verity"
+    h10_address: str = ""  # optional paired MAC address; empty = scan
 
     # Paths
     ecg_save_path: str = ""
     webcam_save_path: str = ""
     logs_save_path: str = ""
     db_path: str = ""
+    replay_save_path: str = ""
 
     # Webcam
     webcam_enabled: bool = True
@@ -62,6 +62,11 @@ class AppSettings:
             self.logs_save_path = str(data / "logs")
         if not self.db_path:
             self.db_path = str(data / "flow_lol.db")
+        if not self.replay_save_path:
+            from pathlib import Path
+
+            user_docs = Path.home() / "Documents" / "League of Legends" / "Replays"
+            self.replay_save_path = str(user_docs)
 
     @classmethod
     def load(cls) -> "AppSettings":

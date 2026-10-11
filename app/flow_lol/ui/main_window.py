@@ -1,4 +1,4 @@
-"""Main application window."""
+"""Main application window with a modern sidebar + header layout."""
 
 from __future__ import annotations
 
@@ -9,24 +9,31 @@ from pathlib import Path
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import (
+    QApplication,
     QComboBox,
     QHBoxLayout,
     QLabel,
     QMainWindow,
     QMessageBox,
-    QPushButton,
     QStackedWidget,
     QStatusBar,
-    QToolBar,
     QVBoxLayout,
     QWidget,
 )
 
 from flow_lol.config.settings import AppSettings
+from flow_lol.ui.components import (
+    CardWidget,
+    CompactActionBar,
+    SidebarButton,
+    StatusPill,
+    ToggleActionButton,
+)
 from flow_lol.ui.dashboard import DashboardWidget
 from flow_lol.ui.logs_widget import LogsWidget
 from flow_lol.ui.sensor_worker import SensorWorker
 from flow_lol.ui.settings_dialog import SettingsDialog
+from flow_lol.ui.styles import Colors, Spacing, stylesheet
 from flow_lol.ui.webcam_widget import WebcamWidget
 
 logger = logging.getLogger(__name__)
@@ -39,19 +46,29 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.settings = settings
         self.setWindowTitle("Flow-LoL")
-        self.setMinimumSize(900, 650)
+        self.setMinimumSize(1000, 720)
 
         self.worker: SensorWorker | None = None
         self._prediction_count = 0
         self._in_match = False
         self._webcam_recording = False
+        self._sensor_status = "idle"
 
+        self._apply_stylesheet()
         self._create_menu()
-        self._create_toolbar()
-        self._create_central_widget()
+        self._create_central_layout()
         self._create_statusbar()
 
         self._update_status()
+
+    # ------------------------------------------------------------------
+    # UI construction
+    # ------------------------------------------------------------------
+
+    def _apply_stylesheet(self) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.setStyleSheet(stylesheet())
 
     def _create_menu(self) -> None:
         menu = self.menuBar()
@@ -62,74 +79,43 @@ class MainWindow(QMainWindow):
         settings_action.triggered.connect(self._open_settings)
         file_menu.addAction(settings_action)
 
+        file_menu.addSeparator()
+
         exit_action = QAction("Exit", self)
         exit_action.setShortcut("Ctrl+Q")
-        exit_action.triggered.connect(self.close)
+        exit_action.triggered.connect(self._safe_exit)
         file_menu.addAction(exit_action)
 
-    def _create_toolbar(self) -> None:
-        toolbar = QToolBar("Main")
-        self.addToolBar(toolbar)
+    def _create_central_layout(self) -> None:
+        central = QWidget()
+        central.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(central)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        self.start_button = QPushButton("Start session")
-        self.start_button.clicked.connect(self._start_session)
-        self.stop_button = QPushButton("Stop session")
-        self.stop_button.setEnabled(False)
-        self.stop_button.clicked.connect(self._stop_session)
+        # Sidebar
+        self._sidebar = self._create_sidebar()
+        layout.addWidget(self._sidebar)
 
-        toolbar.addWidget(self.start_button)
-        toolbar.addWidget(self.stop_button)
-        toolbar.addSeparator()
+        # Main area
+        main = QWidget()
+        main.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        main_layout = QVBoxLayout(main)
+        main_layout.setContentsMargins(Spacing.LG, Spacing.LG, Spacing.LG, Spacing.LG)
+        main_layout.setSpacing(Spacing.LG)
 
-        self.game_mode_combo = QComboBox()
-        self.game_mode_combo.addItems(GAME_MODES)
-        self.game_mode_combo.setEnabled(False)
-        toolbar.addWidget(QLabel("Mode:"))
-        toolbar.addWidget(self.game_mode_combo)
+        # Header / control bar
+        header = self._create_header()
+        main_layout.addWidget(header)
 
-        self.start_match_button = QPushButton("Start match")
-        self.start_match_button.setEnabled(False)
-        self.start_match_button.clicked.connect(self._start_match)
+        # Status card
+        self._status_card = self._create_status_card()
+        main_layout.addWidget(self._status_card)
 
-        self.stop_match_button = QPushButton("Stop match")
-        self.stop_match_button.setEnabled(False)
-        self.stop_match_button.clicked.connect(self._stop_match)
-
-        toolbar.addWidget(self.start_match_button)
-        toolbar.addWidget(self.stop_match_button)
-        toolbar.addSeparator()
-
-        self.toggle_webcam_button = QPushButton("Disable webcam")
-        self.toggle_webcam_button.setEnabled(False)
-        self.toggle_webcam_button.clicked.connect(self._toggle_webcam)
-        toolbar.addWidget(self.toggle_webcam_button)
-        toolbar.addSeparator()
-
-        self._tab_buttons: list[QPushButton] = []
-        self.dashboard_btn = self._add_tab_button(toolbar, "Dashboard", 0)
-        self.logs_btn = self._add_tab_button(toolbar, "Logs", 1)
-        self.webcam_btn = self._add_tab_button(toolbar, "Webcam", 2)
-
-        toolbar.addSeparator()
-        exit_btn = QPushButton("Exit")
-        exit_btn.clicked.connect(self._safe_exit)
-        toolbar.addWidget(exit_btn)
-
-    def _add_tab_button(self, toolbar: QToolBar, label: str, index: int) -> QPushButton:
-        btn = QPushButton(label)
-        btn.setCheckable(True)
-        btn.setChecked(index == 0)
-        btn.clicked.connect(lambda checked, i=index: self._set_tab(i))
-        toolbar.addWidget(btn)
-        self._tab_buttons.append(btn)
-        return btn
-
-    def _set_tab(self, index: int) -> None:
-        for i, btn in enumerate(self._tab_buttons):
-            btn.setChecked(i == index)
-        self.stack.setCurrentIndex(index)
-
-    def _create_central_widget(self) -> None:
+        # Content stack
+        self._content_card = CardWidget()
+        self._content_card.content_layout().setSpacing(0)
+        self._content_card.content_layout().setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedWidget()
 
         self.dashboard = DashboardWidget()
@@ -141,19 +127,147 @@ class MainWindow(QMainWindow):
         self.webcam = WebcamWidget(on_toggle=self._toggle_webcam)
         self.stack.addWidget(self.webcam)
 
-        # Status label sits above the dashboard
-        status_container = QWidget()
-        status_layout = QVBoxLayout(status_container)
+        self._content_card.content_layout().addWidget(self.stack)
+        main_layout.addWidget(self._content_card, stretch=1)
+
+        layout.addWidget(main, stretch=1)
+        self.setCentralWidget(central)
+
+    def _create_sidebar(self) -> QWidget:
+        sidebar = QWidget()
+        sidebar.setFixedWidth(180)
+        sidebar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        sidebar.setStyleSheet(f"background: {Colors.SURFACE};")
+
+        layout = QVBoxLayout(sidebar)
+        layout.setContentsMargins(Spacing.MD, Spacing.LG, Spacing.MD, Spacing.LG)
+        layout.setSpacing(Spacing.XS)
+
+        brand = QLabel("Flow-LoL")
+        brand.setProperty("role", "title")
+        brand.setStyleSheet(f"color: {Colors.PRIMARY};")
+        layout.addWidget(brand)
+
+        tagline = QLabel("Flow state companion")
+        tagline.setProperty("role", "muted")
+        layout.addWidget(tagline)
+        layout.addSpacing(Spacing.XL)
+
+        self._tab_buttons: list[SidebarButton] = []
+        pages = [
+            ("📊", "Dashboard", 0),
+            ("📈", "Live ECG", 1),
+            ("📹", "Webcam", 2),
+        ]
+        for icon, label, index in pages:
+            btn = SidebarButton(icon, label)
+            btn.setChecked(index == 0)
+            btn.clicked.connect(lambda checked, i=index: self._set_tab(i))
+            layout.addWidget(btn)
+            self._tab_buttons.append(btn)
+
+        layout.addStretch(1)
+
+        self._settings_btn = SidebarButton("⚙️", "Settings")
+        self._settings_btn.clicked.connect(self._open_settings)
+        layout.addWidget(self._settings_btn)
+
+        return sidebar
+
+    def _create_header(self) -> QWidget:
+        header = QWidget()
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        layout = QHBoxLayout(header)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Spacing.MD)
+
+        title = QLabel("Session control")
+        title.setProperty("role", "heading")
+        layout.addWidget(title)
+
+        layout.addStretch(1)
+
+        # Session toggle
+        self.session_toggle = ToggleActionButton(
+            idle_text="▶  Start session",
+            active_text="■  Stop session",
+            idle_role="primary",
+            active_role="danger",
+        )
+        self.session_toggle.clicked.connect(self._on_session_toggle)
+        layout.addWidget(self.session_toggle)
+
+        # Match control
+        self.match_toggle = ToggleActionButton(
+            idle_text="▶  Start match",
+            active_text="■  End match",
+            idle_role="primary",
+            active_role="danger",
+        )
+        self.match_toggle.clicked.connect(self._on_match_toggle)
+        layout.addWidget(self.match_toggle)
+
+        self.game_mode_combo = QComboBox()
+        self.game_mode_combo.addItems(GAME_MODES)
+        self.game_mode_combo.setEnabled(False)
+        layout.addWidget(self.game_mode_combo)
+
+        # Webcam toggle
+        self.webcam_toggle = ToggleActionButton(
+            idle_text="▶  Enable webcam",
+            active_text="■  Disable webcam",
+            idle_role="primary",
+            active_role="danger",
+        )
+        self.webcam_toggle.clicked.connect(self._on_webcam_toggle)
+        layout.addWidget(self.webcam_toggle)
+
+        self._update_header_controls(False)
+        return header
+
+    def _create_status_card(self) -> CardWidget:
+        card = CardWidget()
+        layout = card.content_layout()
+        layout.setSpacing(Spacing.SM)
+
         self._status_label = QLabel("Ready. Press Start session to connect sensors.")
         self._status_label.setWordWrap(True)
-        status_layout.addWidget(self._status_label)
-        status_layout.addWidget(self.stack, stretch=1)
+        self._status_label.setProperty("role", "muted")
+        layout.addWidget(self._status_label)
 
-        self.setCentralWidget(status_container)
+        return card
 
     def _create_statusbar(self) -> None:
         self.status = QStatusBar()
         self.setStatusBar(self.status)
+
+        self.pill_sensor = StatusPill("H10: idle")
+        self.pill_models = StatusPill("models: —")
+        self.pill_webcam = StatusPill("webcam: off")
+        self.pill_auto = StatusPill("auto-detect: on", active=self.settings.auto_detect_game)
+        self.pill_match = StatusPill("match: —")
+
+        for pill in (
+            self.pill_sensor,
+            self.pill_models,
+            self.pill_webcam,
+            self.pill_auto,
+            self.pill_match,
+        ):
+            self.status.addWidget(pill)
+
+    # ------------------------------------------------------------------
+    # Navigation
+    # ------------------------------------------------------------------
+
+    def _set_tab(self, index: int) -> None:
+        for i, btn in enumerate(self._tab_buttons):
+            btn.setChecked(i == index)
+        self.stack.setCurrentIndex(index)
+
+    # ------------------------------------------------------------------
+    # Settings
+    # ------------------------------------------------------------------
 
     def _open_settings(self) -> None:
         if self.worker is not None and self.worker.isRunning():
@@ -164,7 +278,18 @@ class MainWindow(QMainWindow):
             self.settings = dialog.settings
             self.settings.save()
             logger.info("Settings updated")
+            self.logs.set_logs_dir(Path(self.settings.logs_save_path))
             self._update_status()
+
+    # ------------------------------------------------------------------
+    # Session / match / webcam actions
+    # ------------------------------------------------------------------
+
+    def _on_session_toggle(self) -> None:
+        if self.session_toggle.is_active():
+            self._start_session()
+        else:
+            self._stop_session()
 
     def _start_session(self) -> None:
         if self.worker is not None and self.worker.isRunning():
@@ -178,14 +303,12 @@ class MainWindow(QMainWindow):
         self.worker.error.connect(self._on_error)
         self.worker.match_started.connect(self._on_match_started)
         self.worker.match_ended.connect(self._on_match_ended)
+        self.worker.game_event.connect(self._on_game_event)
         self.worker.webcam_changed.connect(self._on_webcam_changed)
         self.worker.start()
-        self.start_button.setEnabled(False)
-        self.stop_button.setEnabled(True)
-        self.game_mode_combo.setEnabled(True)
-        self.start_match_button.setEnabled(True)
-        self.toggle_webcam_button.setEnabled(False)
-        self.toggle_webcam_button.setText("Disable webcam")
+
+        self._update_header_controls(True)
+        self.session_toggle.set_active(True)
         self._status_label.setText("Session started. Connecting sensors...")
         logger.info("Session started")
 
@@ -193,21 +316,43 @@ class MainWindow(QMainWindow):
         if self.worker is not None:
             self.worker.stop()
             self.worker = None
-        self.start_button.setEnabled(True)
-        self.stop_button.setEnabled(False)
-        self.game_mode_combo.setEnabled(False)
-        self.start_match_button.setEnabled(False)
-        self.stop_match_button.setEnabled(False)
-        self.toggle_webcam_button.setEnabled(False)
-        self.toggle_webcam_button.setText("Disable webcam")
-        self.webcam.set_recording_state(False, None)
-        self._webcam_recording = False
+
         self._in_match = False
+        self._webcam_recording = False
+        self._sensor_status = "idle"
+        self._update_header_controls(False)
+        self.session_toggle.set_active(False)
+        self.match_toggle.set_active(False)
+        self.webcam_toggle.set_active(False)
+        self.webcam.set_recording_state(False, None)
+
         self.dashboard.refresh_sessions()
         self.logs.refresh_logs()
         self.webcam.refresh_list()
         self._status_label.setText("Session stopped. Dashboard updated.")
         logger.info("Session stopped")
+
+    def _on_match_toggle(self) -> None:
+        if self.match_toggle.is_active():
+            self._start_match()
+        else:
+            self._stop_match()
+
+    def _start_match(self) -> None:
+        if self.worker is None:
+            return
+        mode = self.game_mode_combo.currentText()
+        self.worker.start_match(mode)
+
+    def _stop_match(self) -> None:
+        if self.worker is None:
+            return
+        self.worker.end_match()
+
+    def _on_webcam_toggle(self) -> None:
+        if self.worker is None:
+            return
+        self.worker.toggle_webcam()
 
     def _safe_exit(self) -> None:
         """Stop any running session cleanly before closing the app."""
@@ -232,28 +377,15 @@ class MainWindow(QMainWindow):
         self.settings.save()
         event.accept()
 
-    def _start_match(self) -> None:
-        if self.worker is None:
-            return
-        mode = self.game_mode_combo.currentText()
-        self.worker.start_match(mode)
-
-    def _stop_match(self) -> None:
-        if self.worker is None:
-            return
-        self.worker.end_match()
-
-    def _toggle_webcam(self) -> None:
-        """Tell the worker to start or stop webcam recording."""
-        if self.worker is None:
-            return
-        self.worker.toggle_webcam()
+    # ------------------------------------------------------------------
+    # Worker signal handlers
+    # ------------------------------------------------------------------
 
     def _on_webcam_changed(self, recording: bool, path: object) -> None:
         """Update UI when the worker reports a webcam state change."""
         self._webcam_recording = recording
-        self.toggle_webcam_button.setEnabled(True)
-        self.toggle_webcam_button.setText("Disable webcam" if recording else "Enable webcam")
+        self.webcam_toggle.setEnabled(True)
+        self.webcam_toggle.set_active(recording)
         self.webcam.set_recording_state(recording, path)
         self._update_status()
         status = "Webcam recording started" if recording else "Webcam recording stopped"
@@ -263,6 +395,7 @@ class MainWindow(QMainWindow):
             self._status_label.setText(status)
 
     def _on_connection_changed(self, name: str, status: str) -> None:
+        self._sensor_status = status.lower()
         self._status_label.setText(f"[{name}] {status}")
         self._update_status()
 
@@ -284,29 +417,37 @@ class MainWindow(QMainWindow):
 
     def _on_match_started(self, game_mode: str, detected: bool) -> None:
         self._in_match = True
-        self.start_match_button.setEnabled(False)
-        self.stop_match_button.setEnabled(True)
+        self.match_toggle.set_active(True)
         self.game_mode_combo.setEnabled(False)
         source = "auto-detected" if detected else "manual"
         self._status_label.setText(f"Match started ({source}): {game_mode}")
         logger.info("Match started: %s (%s)", game_mode, source)
+        self._update_status()
 
     def _on_match_ended(self) -> None:
         self._in_match = False
-        self.start_match_button.setEnabled(True)
-        self.stop_match_button.setEnabled(False)
-        self.game_mode_combo.setEnabled(True)
+        self.match_toggle.set_active(False)
+        self.game_mode_combo.setEnabled(self.worker is not None and self.worker.isRunning())
         self._status_label.setText("Match ended. Session still running.")
         logger.info("Match ended")
+        self._update_status()
+
+    def _on_game_event(self, event: object) -> None:
+        etype = event.get("event_type", "event") if isinstance(event, dict) else "event"
+        self._status_label.setText(f"Game event: {etype}")
+
+    # ------------------------------------------------------------------
+    # Header / status helpers
+    # ------------------------------------------------------------------
+
+    def _update_header_controls(self, session_running: bool) -> None:
+        self.match_toggle.setEnabled(session_running and not self._in_match)
+        self.game_mode_combo.setEnabled(session_running and not self._in_match)
+        # Webcam toggle is enabled only when a sensor has connected; until then
+        # the worker keeps it disabled via _on_webcam_changed.
+        self.webcam_toggle.setEnabled(False)
 
     def _update_status(self) -> None:
-        sensors = []
-        if self.settings.use_h10:
-            sensors.append("H10")
-        if self.settings.use_verity:
-            sensors.append("Verity")
-        sensor_text = " + ".join(sensors) if sensors else "none"
-
         enabled_models = [
             name
             for name, flag in {
@@ -318,12 +459,34 @@ class MainWindow(QMainWindow):
             }.items()
             if flag
         ]
-        model_text = f"{len(enabled_models)}/5 models" if enabled_models else "no models"
-        match_text = "in match" if self._in_match else "no match"
 
-        self.status.showMessage(
-            f"Sensors: {sensor_text} | Models: {model_text} | "
-            f"Webcam: {'recording' if self._webcam_recording else 'off'} | "
-            f"Auto-detect: {'on' if self.settings.auto_detect_game else 'off'} | "
-            f"Match: {match_text}"
-        )
+        # Sensor pill
+        if "connected" in self._sensor_status:
+            self.pill_sensor.set_text("H10: connected")
+            self.pill_sensor.set_active(True)
+        elif "connecting" in self._sensor_status or "scan" in self._sensor_status:
+            self.pill_sensor.set_text("H10: connecting")
+            self.pill_sensor.set_active(False, warning=True)
+        else:
+            self.pill_sensor.set_text("H10: idle")
+            self.pill_sensor.set_active(False)
+
+        self.pill_models.set_text(f"models: {len(enabled_models)}/5")
+        self.pill_models.set_active(bool(enabled_models))
+
+        if self._webcam_recording:
+            self.pill_webcam.set_text("webcam: recording")
+            self.pill_webcam.set_active(True)
+        else:
+            self.pill_webcam.set_text("webcam: off")
+            self.pill_webcam.set_active(False)
+
+        self.pill_auto.set_text(f"auto-detect: {'on' if self.settings.auto_detect_game else 'off'}")
+        self.pill_auto.set_active(self.settings.auto_detect_game)
+
+        if self._in_match:
+            self.pill_match.set_text("match: active")
+            self.pill_match.set_active(True)
+        else:
+            self.pill_match.set_text("match: —")
+            self.pill_match.set_active(False)

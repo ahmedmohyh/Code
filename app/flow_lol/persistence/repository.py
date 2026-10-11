@@ -5,13 +5,16 @@ from __future__ import annotations
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from flow_lol.config.settings import AppSettings
 from flow_lol.inference.pipeline import Prediction
 from flow_lol.persistence.database import (
+    GameEvent,
     Match,
     Prediction as PredictionRow,
+    Replay,
     SensorEvent,
     Session,
     init_db,
@@ -38,8 +41,7 @@ class SessionRepository:
     def create_session(self, settings: AppSettings, game_mode: Optional[str] = None) -> int:
         settings_dict = {
             "use_h10": settings.use_h10,
-            "use_verity": settings.use_verity,
-            "preferred_sensor": settings.preferred_sensor,
+            "h10_address": settings.h10_address,
             "use_biraffe2_svm": settings.use_biraffe2_svm,
             "use_biraffe2_knn": settings.use_biraffe2_knn,
             "use_biraffe2_rf": settings.use_biraffe2_rf,
@@ -233,15 +235,147 @@ class SessionRepository:
                 for r in rows
             ]
 
+    def update_match_notes(self, match_id: int, notes: str) -> None:
+        with self._Session() as sess:
+            row = sess.query(Match).filter_by(id=match_id).first()
+            if row is None:
+                logger.warning("Match %s not found; cannot update notes", match_id)
+                return
+            row.notes = notes
+            sess.commit()
+        logger.info("Updated notes for match %s", match_id)
+
+    def add_game_event(
+        self,
+        session_id: int,
+        match_id: int,
+        timestamp: float,
+        event_type: str,
+        actor: Optional[str] = None,
+        target: Optional[str] = None,
+        description: Optional[str] = None,
+        source_json: Optional[str] = None,
+    ) -> int:
+        row = GameEvent(
+            session_id=session_id,
+            match_id=match_id,
+            timestamp=timestamp,
+            event_type=event_type,
+            actor=actor,
+            target=target,
+            description=description,
+            source_json=source_json,
+        )
+        with self._Session() as sess:
+            sess.add(row)
+            sess.commit()
+            event_id = row.id
+        logger.debug("Added game event %s (%s)", event_id, event_type)
+        return event_id
+
+    def get_game_events(
+        self,
+        session_id: int,
+        match_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        with self._Session() as sess:
+            query = sess.query(GameEvent).filter_by(session_id=session_id)
+            if match_id is not None:
+                query = query.filter_by(match_id=match_id)
+            rows = query.order_by(GameEvent.timestamp.asc()).all()
+            return [
+                {
+                    "id": r.id,
+                    "match_id": r.match_id,
+                    "timestamp": r.timestamp,
+                    "event_type": r.event_type,
+                    "actor": r.actor,
+                    "target": r.target,
+                    "description": r.description,
+                    "source_json": r.source_json,
+                }
+                for r in rows
+            ]
+
+    def add_replay(
+        self,
+        file_path: str,
+        game_id: Optional[str] = None,
+        recorded_at: Optional[float] = None,
+        duration_seconds: Optional[float] = None,
+        session_id: Optional[int] = None,
+        match_id: Optional[int] = None,
+    ) -> int:
+        row = Replay(
+            session_id=session_id,
+            match_id=match_id,
+            file_path=file_path,
+            game_id=game_id,
+            recorded_at=recorded_at,
+            duration_seconds=duration_seconds,
+        )
+        with self._Session() as sess:
+            sess.add(row)
+            sess.commit()
+            replay_id = row.id
+        logger.info("Added replay %s (%s)", replay_id, file_path)
+        return replay_id
+
+    def get_replays(
+        self,
+        session_id: int,
+        match_id: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        with self._Session() as sess:
+            query = sess.query(Replay).filter_by(session_id=session_id)
+            if match_id is not None:
+                query = query.filter_by(match_id=match_id)
+            rows = query.order_by(Replay.recorded_at.desc()).all()
+            return [
+                {
+                    "id": r.id,
+                    "match_id": r.match_id,
+                    "file_path": r.file_path,
+                    "file_name": Path(r.file_path).name,
+                    "game_id": r.game_id,
+                    "recorded_at": r.recorded_at,
+                    "duration_seconds": r.duration_seconds,
+                    "notes": r.notes,
+                }
+                for r in rows
+            ]
+
+    def link_replay_to_match(
+        self,
+        replay_id: int,
+        session_id: int,
+        match_id: int,
+    ) -> None:
+        with self._Session() as sess:
+            row = sess.query(Replay).filter_by(id=replay_id).first()
+            if row is None:
+                logger.warning("Replay %s not found; cannot link", replay_id)
+                return
+            row.session_id = session_id
+            row.match_id = match_id
+            sess.commit()
+        logger.info("Linked replay %s to match %s", replay_id, match_id)
+
     def delete_session(self, session_id: int) -> None:
         with self._Session() as sess:
             sess.query(PredictionRow).filter_by(session_id=session_id).delete(
+                synchronize_session=False
+            )
+            sess.query(GameEvent).filter_by(session_id=session_id).delete(
                 synchronize_session=False
             )
             sess.query(Match).filter_by(session_id=session_id).delete(
                 synchronize_session=False
             )
             sess.query(SensorEvent).filter_by(session_id=session_id).delete(
+                synchronize_session=False
+            )
+            sess.query(Replay).filter_by(session_id=session_id).delete(
                 synchronize_session=False
             )
             sess.query(Session).filter_by(id=session_id).delete(
@@ -272,16 +406,20 @@ class SessionRepository:
         """Delete every session and all linked rows. Returns the number of sessions removed."""
         with self._Session() as sess:
             n_predictions = sess.query(PredictionRow).delete(synchronize_session=False)
+            n_game_events = sess.query(GameEvent).delete(synchronize_session=False)
             n_matches = sess.query(Match).delete(synchronize_session=False)
             n_events = sess.query(SensorEvent).delete(synchronize_session=False)
+            n_replays = sess.query(Replay).delete(synchronize_session=False)
             n_sessions = sess.query(Session).delete(synchronize_session=False)
             sess.commit()
         logger.info(
-            "Deleted all sessions (%s), matches (%s), predictions (%s), events (%s)",
+            "Deleted all sessions (%s), matches (%s), predictions (%s), game events (%s), sensor events (%s), replays (%s)",
             n_sessions,
             n_matches,
             n_predictions,
+            n_game_events,
             n_events,
+            n_replays,
         )
         self.active_match_id = None
         return n_sessions

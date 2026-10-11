@@ -1,4 +1,4 @@
-"""Sensor manager: orchestrate Polar H10 and/or Verity Sense streams."""
+"""Sensor manager: owns the Polar H10 stream and buffer."""
 
 from __future__ import annotations
 
@@ -9,13 +9,12 @@ from typing import Callable, Dict, List, Optional
 from flow_lol.config.settings import AppSettings
 from flow_lol.sensors.buffer import ECGBuffer, ECGSample
 from flow_lol.sensors.polar_h10 import PolarH10BufferedStream
-from flow_lol.sensors.polar_verity import PolarVeritySenseStream
 
 logger = logging.getLogger(__name__)
 
 
 class SensorManager:
-    """Owns one ECG buffer per active sensor and manages streaming lifecycle."""
+    """Owns one ECG buffer for the active sensor and manages streaming lifecycle."""
 
     def __init__(
         self,
@@ -30,7 +29,7 @@ class SensorManager:
         self.on_samples = on_samples
 
         self.buffers: Dict[str, ECGBuffer] = {}
-        self.streams: Dict[str, PolarH10BufferedStream | PolarVeritySenseStream] = {}
+        self.streams: Dict[str, PolarH10BufferedStream] = {}
         self._running = False
 
     def _make_callback(self, name: str) -> Callable[[str], None]:
@@ -54,7 +53,7 @@ class SensorManager:
         return cb
 
     async def start(self) -> None:
-        """Start enabled sensor streams.
+        """Start the H10 stream if enabled.
 
         A failing sensor emits an error signal but does not kill the whole
         worker, so the UI can keep the session alive for webcam/game logging.
@@ -63,25 +62,25 @@ class SensorManager:
             return
         self._running = True
 
-        if self.settings.use_h10:
-            buffer = ECGBuffer()
-            stream = PolarH10BufferedStream(
-                buffer=buffer,
-                device_address=None,
-                device_name="Polar H10",
-                on_connection_change=self._make_callback("h10"),
-                on_error=self._make_error_callback("h10"),
-                on_samples_extra=self._make_samples_callback("h10"),
-            )
-            try:
-                await stream.start()
-                self.buffers["h10"] = buffer
-                self.streams["h10"] = stream
-            except Exception as exc:
-                logger.error("Could not start H10 stream: %s", exc)
+        if not self.settings.use_h10:
+            logger.warning("H10 disabled in settings")
+            return
 
-        if self.settings.use_verity:
-            logger.warning("Verity Sense streaming requested but not implemented")
+        buffer = ECGBuffer()
+        stream = PolarH10BufferedStream(
+            buffer=buffer,
+            device_address=self.settings.h10_address or None,
+            device_name="Polar H10",
+            on_connection_change=self._make_callback("h10"),
+            on_error=self._make_error_callback("h10"),
+            on_samples_extra=self._make_samples_callback("h10"),
+        )
+        try:
+            await stream.start()
+            self.buffers["h10"] = buffer
+            self.streams["h10"] = stream
+        except Exception as exc:
+            logger.error("Could not start H10 stream: %s", exc)
 
         if not self.buffers:
             logger.warning("No sensors connected; session will continue for webcam/game logging only")

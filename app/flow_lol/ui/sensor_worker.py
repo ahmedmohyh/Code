@@ -7,12 +7,14 @@ The worker emits:
   error(sensor_name, exception)
   match_started(game_mode, detected)
   match_ended()
+  game_event(event_dict)
   webcam_changed(recording: bool, output_path: Optional[Path])
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 from pathlib import Path
@@ -20,8 +22,10 @@ from typing import Optional
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
+from flow_lol.analysis.match_summary import BreakRecommendation, summarize_match
 from flow_lol.config.settings import AppSettings
 from flow_lol.game.detector import GameDetector
+from flow_lol.game.replay_scanner import scan_replays_for_session
 from flow_lol.inference.pipeline import InferencePipeline, Prediction
 from flow_lol.persistence.ecg_writer import RawECGWriter
 from flow_lol.persistence.repository import SessionRepository
@@ -38,6 +42,7 @@ class SensorWorker(QThread):
     error = pyqtSignal(str, object)
     match_started = pyqtSignal(str, bool)
     match_ended = pyqtSignal()
+    game_event = pyqtSignal(object)  # normalized event dict
     webcam_changed = pyqtSignal(bool, object)  # recording: bool, output_path: Optional[Path]
 
     def __init__(
@@ -54,6 +59,9 @@ class SensorWorker(QThread):
         self.webcam: Optional[WebcamRecorder] = None
         self.ecg_writer: Optional[RawECGWriter] = None
         self.session_id: Optional[int] = None
+        self._active_match_id: Optional[int] = None
+        self._active_match_started_at: Optional[float] = None
+        self._match_predictions: list = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._stop_event = asyncio.Event()
 
@@ -90,6 +98,7 @@ class SensorWorker(QThread):
             settings=self.settings,
             on_match_start=self._on_match_start,
             on_match_end=self._on_match_end,
+            on_game_event=self._on_game_event,
         )
         await self.detector.start()
 
@@ -154,6 +163,8 @@ class SensorWorker(QThread):
     def _on_prediction(self, prediction: Prediction) -> None:
         if self.repository is not None and self.session_id is not None:
             self.repository.add_prediction(self.session_id, prediction)
+        if self._active_match_id is not None:
+            self._match_predictions.append(prediction)
         self.prediction.emit(prediction.sensor_name, prediction.to_dict())
 
     def _on_connection_change(self, name: str, status: str) -> None:
@@ -177,13 +188,64 @@ class SensorWorker(QThread):
 
     def _on_match_start(self, game_mode: str, detected: bool) -> None:
         if self.repository is not None and self.session_id is not None:
-            self.repository.start_match(self.session_id, game_mode, detected=detected)
+            self._active_match_id = self.repository.start_match(
+                self.session_id, game_mode, detected=detected
+            )
+            self._active_match_started_at = time.time()
+        self._match_predictions.clear()
         self.match_started.emit(game_mode, detected)
 
     def _on_match_end(self) -> None:
-        if self.repository is not None:
-            self.repository.end_match()
+        if self.repository is not None and self._active_match_id is not None:
+            self.repository.end_match(self._active_match_id)
+            # Generate a post-match recommendation based on the flow trend.
+            events = (
+                self.repository.get_game_events(
+                    self.session_id or 0, match_id=self._active_match_id
+                )
+                if self.session_id is not None
+                else []
+            )
+            rec = summarize_match(self._match_predictions, events)
+            self.repository.update_match_notes(self._active_match_id, rec.to_text())
+            # Try to link any newly saved replay files to the just-finished match.
+            self._scan_replays(self._active_match_id)
+        self._active_match_id = None
+        self._active_match_started_at = None
+        self._match_predictions.clear()
         self.match_ended.emit()
+
+    def _on_game_event(self, event: dict) -> None:
+        if self.repository is None or self.session_id is None or self._active_match_id is None:
+            return
+        raw = event.get("raw", {})
+        # Live Client Data API returns EventTime as in-game seconds. Convert to an
+        # absolute Unix timestamp by adding the match start time.
+        event_time = float(event["timestamp"])
+        absolute_ts = (self._active_match_started_at or time.time()) + event_time
+        self.repository.add_game_event(
+            session_id=self.session_id,
+            match_id=self._active_match_id,
+            timestamp=absolute_ts,
+            event_type=event["event_type"],
+            actor=event.get("actor"),
+            target=event.get("target"),
+            description=event.get("description"),
+            source_json=json.dumps(raw, default=str, ensure_ascii=False),
+        )
+        self.game_event.emit(event)
+
+    def _scan_replays(self, match_id: int) -> None:
+        if self.repository is None or self.session_id is None:
+            return
+        replays = scan_replays_for_session(
+            replay_dir=self.settings.replay_save_path,
+            session_id=self.session_id,
+            match_id=match_id,
+            repository=self.repository,
+        )
+        if replays:
+            logger.info("Linked %s replay(s) to match %s", len(replays), match_id)
 
     def start_match(self, game_mode: str) -> None:
         """Request a manual match start from the UI thread."""

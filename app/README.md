@@ -20,7 +20,10 @@ Derived from the MaxQDA coding results (`AF-01` … `AF-10`) and the best-perfor
   - Irshad RandomForest (classical)
   - BIRAFFE2 MLP (deep learning)
   - Each model toggled by a setting; odd-number ensemble guarantees a majority winner.
-- **Game detection**: manual start/stop plus LoL-client process auto-detection (`psutil`); Riot Games REST API kept as a future optional layer
+- **Game detection**: local League Client (LCU) API auto-detection first, then LoL-client process detection, then manual start/stop; no Riot API key needed
+  - Captures live in-game events (kills, deaths, objectives) via the Live Client Data API and links them to the flow timeline.
+  - Auto-links `.rofl` replay files to finished matches.
+- **Post-match analysis**: rule-based tilt/break recommendation generated from the match flow trend and deaths near no-flow windows.
 - **Persistence**: local SQLite database (`flow_lol.db`)
   - `sessions` table
   - `matches` table (manual or auto-detected LoL matches inside a session)
@@ -42,9 +45,9 @@ Stored in JSON (`config.json`) and editable in the GUI:
 | Webcam save path | `app/data/webcam/` | Overridable |
 | Logs save path | `app/data/logs/` | Overridable; takes effect after restart |
 | Database path | `app/data/flow_lol.db` | Overridable; takes effect after restart |
-| Riot API integration | disabled until key provided | Manual start/stop + LoL-client detection only; Riot REST API is future work |
+| LCU auto-detect | enabled | Reads the local League Client lockfile; reports real queue type (Solo/Duo, Flex, ARAM, etc.) |
 | Riot API key | empty | Not used yet |
-| Game auto-detect | enabled | Detects `League of Legends.exe` / `LeagueClient.exe`; falls back to manual start/stop |
+| Riot API integration | disabled | Not used; LCU API is local-only and requires no key |
 | Sampling window | 60 s | Matches the best BIRAFFE2 window; overridable |
 | Overlap | 50 % | Matches experiment setup; overridable |
 | Classifier ensemble | all 5 | Toggle individual ECG-only models on/off; odd count required |
@@ -66,7 +69,7 @@ Voting: each model predicts one label per window; the ensemble label is the labe
 ## Decisions (answered by user)
 
 1. **Model export**: create the exporter first; the app will not retrain at runtime.
-2. **Riot API key**: no key yet; Phase 5 starts with manual start/stop + LoL-client process detection. Riot REST API integration is kept as a later TODO.
+2. **Riot API key**: not needed. The local League Client (LCU) API provides match start/end and queue type without an external key. Process detection and manual start/stop remain as fallbacks.
 3. **Two sensors**: let the user choose a preferred sensor; if none is chosen, average predictions from both streams.
 4. **Deployment target**: lab PCs run Windows 10/11 64-bit and the installer can run with admin rights.
 
@@ -80,18 +83,18 @@ Voting: each model predicts one label per window; the ensemble label is the labe
 - [x] Phase 1.3 – Feature extraction from streaming ECG windows (classical only)
 - [x] Phase 1.4 – Classifier loader + runtime ensemble wiring
 - [x] Phase 1.5 – SQLite session/prediction persistence
-- [x] Phase 2.0 – LoL match auto/manual detection (Riot API optional)
+- [x] Phase 2.0 – LoL match auto/manual detection (LCU API first; Riot API optional / not used)
 - [x] Phase 2.1 – Webcam background recording
-- [x] Phase 2.2 – Post-game dashboard / flow timeline
+- [x] Phase 2.2 – Post-game dashboard / flow timeline + replay links + event markers
 - [x] Phase 2.3 – Packaging (PyInstaller + installer) and lab deployment
 
 ### MaxQDA requirement extensions
 
-- [ ] Phase 9 – Pre-game readiness widget + break/tilt recommendations (AF-01, AF-09)
+- [ ] Phase 9 – Pre-game readiness widget + warm-up recommendations (AF-01)
 - [ ] Phase 10 – Context-based disturbance reduction: notification muting, adaptive lighting/audio cues, screen-edge-only status (AF-02, AF-04)
-- [ ] Phase 11 – Replay integration and reflection prompts (AF-06)
+- [ ] Phase 11 – Advanced replay reflection prompts (AF-06 deeper integration)
 - [ ] Phase 12 – Player- and role-specific threshold learning (AF-07)
-- [ ] Phase 13 – Team-mode detection / team dashboard (AF-10)
+- [ ] Phase 13 – Team-mode detection / team dashboard (AF-10 team part)
 
 ## Mapping AF-01 .. AF-10 to phases
 
@@ -101,12 +104,12 @@ Voting: each model predicts one label per window; the ensemble label is the labe
 | AF-02 | Context-based disturbance reduction (notifications, Discord, second monitor, adaptive audio/lighting) | 10 | Windows-specific; uses tray integration / system APIs; will be opt-in per app setting |
 | AF-03 | Multimodal state sensing (webcam + HRV/ECG) | 1.2, 1.3, 1.4, 2.1, 2.2 | ECG is the real-time input; webcam is recorded for post-game reflection only, not classification |
 | AF-04 | Communication-safe real-time intervention | 2.0, 10 | Avoid in-game overlays; use screen-edge / non-critical-moment status; real-time feedback deferred to safe moments |
-| AF-05 | Post-game flow timeline (flow/frustration/neutral phases linked to kills/deaths/objectives) | 2.2 | Core dashboard feature |
-| AF-06 | Replay integration and reflection prompts | 11 | Needs replay file parsing; optional / future extension |
+| AF-05 | Post-game flow timeline (flow/frustration/neutral phases linked to kills/deaths/objectives) | 2.2 | Core dashboard feature; events drawn on timeline |
+| AF-06 | Replay integration and reflection prompts | 2.2, 11 | `.rofl` files auto-detected and linked; open-in-client button; reflection prompts use stored game events |
 | AF-07 | Personalization and learning of player-/role-specific thresholds | 12 | Low priority per requirements table; collect data first, then learn offline |
 | AF-08 | Privacy and transparency (local processing, storage view, deletion) | 0, 1.5, 2.2 | All processing local; per-session deletion in dashboard; storage overview still to come |
-| AF-09 | Tilt detection and break recommendation | 2.2, 9 | Use classifier probabilities / post-match trend to suggest a break |
-| AF-10 | Team-mode detection (SoloQ vs team/Flex) | 2.0, 13 | Game metadata from manual selection or Riot API; team dashboard future extension |
+| AF-09 | Tilt detection and break recommendation | 2.2 | Rule-based post-match recommendation from flow trend and death/no-flow correlation |
+| AF-10 | Team-mode detection (SoloQ vs team/Flex) | 2.0, 13 | Queue type from LCU API; team dashboard future extension |
 
 ## Repository structure (planned)
 
@@ -138,7 +141,12 @@ app/
       ensemble.py                <- classifier loading + voting
     game/
       __init__.py
-      detector.py                <- Riot API + process detection + manual
+      lcu_client.py              <- local League Client (LCU) API: lockfile auth + gameflow polling + live event capture
+      detector.py                <- LCU API first, then process detection, then manual
+      replay_scanner.py          <- detect and parse League `.rofl` replay files
+    analysis/
+      __init__.py
+      match_summary.py           <- post-match tilt/break recommendation generator
     persistence/
       __init__.py
       database.py                <- SQLAlchemy models
@@ -178,11 +186,11 @@ live pipeline robust enough for the lab study.
 - **H10 streaming (`flow_lol/sensors/polar_h10.py`).** Uses `polar_python`
   (the same backend as the working polar-ecg-viewer project) instead of raw
   `bleak`. Handles the Polar PMD control point and ECG notifications.
-  Pairing is now reactive: the app only calls `BleakClient.pair()` if starting
-  the ECG stream actually fails with a Windows "Insufficient Authentication"
-  GATT error. If Windows has already connected the H10 as a generic
-  heart-rate device, the user must remove it from Windows Bluetooth settings
-  and let the app manage the connection exclusively.
+  Pairing is reactive: the app only calls `BleakClient.pair()` if the ECG
+  stream fails with Windows "Insufficient Authentication". If a paired MAC
+  address is configured in Settings → Sensors, the app builds a `BLEDevice`
+  from that address and connects directly, bypassing `BleakScanner.discover()`
+  which on Windows often cannot see already-paired devices ([bleak #1254](https://github.com/hbldh/bleak/issues/1254)).
 - **Sensor worker robustness (`flow_lol/ui/sensor_worker.py`).** A failing
   sensor now emits an error signal but does not crash the whole worker, so the
   session can continue for game logging. Webcam recording is only started after
@@ -202,9 +210,10 @@ live pipeline robust enough for the lab study.
     longer reports the file as in use.
 - **Safe exit.** Toolbar **Exit** button and window close handler stop any
   running session cleanly before quitting.
-- **Settings storage paths.** Storage tab now lets the user set ECG, webcam,
-  logs, and database paths. Logs path is used immediately on next launch; DB
-  path requires restart.
+- **Settings storage paths + H10 address.** Storage tab sets ECG, webcam, logs,
+  and database paths; the Sensors tab now lets the user scan and save the H10
+  MAC address so reconnection works without unpairing. Changes to paths take
+  effect after restart; the H10 address is used immediately.
 - **Webcam finalization (`flow_lol/webcam/recorder.py`).** Uses `avc1` with an
   `mp4v` fallback and makes sure `VideoWriter.release()` is called so the MP4
   container is finalised (fixes the missing `moov` atom).

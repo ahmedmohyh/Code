@@ -1,12 +1,12 @@
 """Polar H10 BLE ECG streaming.
 
-Uses the ``polar_python`` package to handle the Polar PMD protocol.  This is
-the same backend used by the working polar-ecg-viewer project.
+Uses the ``polar_python`` package to handle the Polar PMD protocol.
 
-Important Windows note: if the H10 is already connected to Windows as a
-generic heart-rate device, ``polar_python`` cannot open the PMD service.  In
-that case the user must remove the H10 from Windows Bluetooth settings and
-let the app manage the connection exclusively.
+Important Windows note: if an explicit MAC address is configured, the app builds
+a ``BLEDevice`` from that address and connects directly.  This bypasses
+``BleakScanner.discover()``, which on Windows often cannot see devices that are
+already paired/connected to the OS ([bleak #1254](https://github.com/hbldh/bleak/issues/1254)).
+If no address is configured, the app falls back to scanning.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ import time
 from typing import Callable, List, Optional
 
 from bleak import BleakScanner
+from bleak.backends.device import BLEDevice
 from polar_python.device import PolarDevice
 from polar_python.models import ECGData
 
@@ -58,6 +59,23 @@ class PolarH10Stream:
             if d.name and self.device_name in d.name
         ]
 
+    async def _find_device(self, address: Optional[str], timeout: float = 10.0) -> Optional[BLEDevice]:
+        """Return a BLEDevice, using direct address lookup when possible.
+
+        If an address is known, construct a BLEDevice manually.  This tells bleak
+        to skip its implicit scan on Windows and use
+        ``BluetoothLEDevice.from_bluetooth_address_async`` directly.
+        """
+        if address:
+            logger.info("Using configured H10 address %s (no scan)", address)
+            return BLEDevice(address, name=self.device_name)
+
+        logger.info("Scanning for %s...", self.device_name)
+        return await BleakScanner.find_device_by_filter(
+            lambda bd, ad: bd.name and self.device_name in bd.name,
+            timeout=timeout,
+        )
+
     async def start(self, max_attempts: int = 3) -> None:
         """Connect and start ECG stream, with retries if the device is not found."""
         if self._running:
@@ -67,23 +85,12 @@ class PolarH10Stream:
 
         for attempt in range(1, max_attempts + 1):
             try:
-                device_name = self.device_name
-                address = self.device_address
-
-                if address:
-                    logger.info("Looking for %s at %s", device_name, address)
-                    bleak_device = await BleakScanner.find_device_by_address(
-                        address, timeout=10.0
-                    )
-                else:
-                    bleak_device = await BleakScanner.find_device_by_filter(
-                        lambda bd, ad: bd.name and device_name in bd.name,
-                        timeout=10.0,
-                    )
+                bleak_device = await self._find_device(self.device_address)
 
                 if bleak_device is None:
                     raise RuntimeError(
-                        f"No {device_name} device found. Make sure the H10 is blinking blue and not already connected to Windows."
+                        f"No {self.device_name} device found. "
+                        "Make sure the H10 is blinking blue and not already connected to Windows."
                     )
 
                 logger.info(

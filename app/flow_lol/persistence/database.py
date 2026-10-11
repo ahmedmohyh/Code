@@ -71,6 +71,33 @@ class SensorEvent(Base):
     message = Column(Text, nullable=True)
 
 
+class GameEvent(Base):
+    __tablename__ = "game_events"
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(Integer, nullable=False, index=True)
+    match_id = Column(Integer, nullable=True, index=True)
+    timestamp = Column(Float, nullable=False)
+    event_type = Column(String, nullable=False)
+    actor = Column(String, nullable=True)
+    target = Column(String, nullable=True)
+    description = Column(Text, nullable=True)
+    source_json = Column(Text, nullable=True)
+
+
+class Replay(Base):
+    __tablename__ = "replays"
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(Integer, nullable=True, index=True)
+    match_id = Column(Integer, nullable=True, index=True)
+    file_path = Column(String, nullable=False)
+    game_id = Column(String, nullable=True)
+    recorded_at = Column(Float, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+    notes = Column(Text, nullable=True)
+
+
 def init_db(db_path: str) -> None:
     engine = create_engine(f"sqlite:///{db_path}")
     Base.metadata.create_all(engine)
