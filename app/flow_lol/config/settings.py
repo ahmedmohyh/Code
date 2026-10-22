@@ -21,6 +21,7 @@ class AppSettings:
     # Paths
     ecg_save_path: str = ""
     webcam_save_path: str = ""
+    snapshot_save_path: str = ""
     logs_save_path: str = ""
     db_path: str = ""
     replay_save_path: str = ""
@@ -58,13 +59,13 @@ class AppSettings:
             self.ecg_save_path = str(data / "ecg")
         if not self.webcam_save_path:
             self.webcam_save_path = str(data / "webcam")
+        if not self.snapshot_save_path:
+            self.snapshot_save_path = str(Path(self.webcam_save_path) / "snapshots")
         if not self.logs_save_path:
             self.logs_save_path = str(data / "logs")
         if not self.db_path:
             self.db_path = str(data / "flow_lol.db")
         if not self.replay_save_path:
-            from pathlib import Path
-
             user_docs = Path.home() / "Documents" / "League of Legends" / "Replays"
             self.replay_save_path = str(user_docs)
 

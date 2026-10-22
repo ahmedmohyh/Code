@@ -6,8 +6,8 @@ import logging
 from pathlib import Path
 from typing import List
 
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPainter, QPen
+from PyQt6.QtCore import QFileSystemWatcher, Qt
+from PyQt6.QtGui import QColor, QPainter, QPen, QTextCursor
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
@@ -25,6 +25,7 @@ from PyQt6.QtWidgets import (
 from flow_lol.sensors.buffer import ECGSample
 from flow_lol.ui.components import CardWidget, CompactActionBar
 from flow_lol.ui.styles import Colors, Spacing
+from flow_lol.utils.logging import get_current_log_file
 from flow_lol.utils.paths import default_data_dir
 
 logger = logging.getLogger(__name__)
@@ -136,6 +137,9 @@ class LogViewerWidget(QWidget):
     def __init__(self, parent: QWidget | None = None, logs_dir: Path | None = None) -> None:
         super().__init__(parent)
         self.logs_dir = logs_dir or _resolve_logs_dir()
+        self._watched_path: Path | None = None
+        self._watcher: QFileSystemWatcher | None = None
+        self._last_size = 0
         self._build_ui()
         self.refresh_list()
 
@@ -164,6 +168,9 @@ class LogViewerWidget(QWidget):
         self.delete_btn = actions.add_button("🗑 Delete")
         self.delete_btn.setProperty("role", "danger")
         self.delete_btn.clicked.connect(self._delete_selected)
+        self.delete_all_btn = actions.add_button("🗑 Delete all")
+        self.delete_all_btn.setProperty("role", "danger")
+        self.delete_all_btn.clicked.connect(self._delete_all)
         actions.add_stretch()
         left_layout.addWidget(actions)
 
@@ -184,10 +191,17 @@ class LogViewerWidget(QWidget):
             self.text_view.setPlainText(f"Log directory not found: {self.logs_dir}")
             return
 
+        current_log = get_current_log_file()
         files = sorted(self.logs_dir.glob("*.log"), reverse=True)
+        selected_path: Path | None = None
         for path in files:
-            item = QListWidgetItem(path.name)
+            is_current = current_log is not None and path == current_log
+            text = f"{path.name}  (CURRENT — in use)" if is_current else path.name
+            item = QListWidgetItem(text)
             item.setData(Qt.ItemDataRole.UserRole, str(path))
+            if is_current:
+                item.setToolTip("This log is currently being written by the app; it cannot be deleted while the app is running.")
+                item.setForeground(QColor(Colors.PRIMARY))
             self.file_list.addItem(item)
 
         if self.file_list.count() == 0:
@@ -198,13 +212,66 @@ class LogViewerWidget(QWidget):
     def _on_file_selected(self, current: QListWidgetItem | None, previous: QListWidgetItem | None) -> None:
         if current is None:
             return
-        path = current.data(Qt.ItemDataRole.UserRole)
+        path = Path(current.data(Qt.ItemDataRole.UserRole))
+        self._watch_file(path)
+        self._load_file_text(path)
+
+    def _watch_file(self, path: Path) -> None:
+        """Start (or move) a file watcher so new log lines appear automatically."""
+        if self._watcher is None:
+            self._watcher = QFileSystemWatcher(self)
+            self._watcher.fileChanged.connect(self._on_file_changed)
+
+        if self._watched_path is not None and self._watched_path != path:
+            self._watcher.removePath(str(self._watched_path))
+            self._last_size = 0
+
+        path_str = str(path)
+        if self._watched_path != path:
+            self._watcher.addPath(path_str)
+            self._watched_path = path
+            self._last_size = path.stat().st_size if path.exists() else 0
+
+    def _on_file_changed(self, path_str: str) -> None:
+        path = Path(path_str)
+        if not path.exists():
+            return
+        current_log = get_current_log_file()
+        if current_log is not None and path == current_log:
+            self._append_new_lines(path)
+        else:
+            self._load_file_text(path)
+
+    def _append_new_lines(self, path: Path) -> None:
         try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
+            current_size = path.stat().st_size
+            if current_size < self._last_size:
+                # Log was rotated/truncated; reload fully.
+                self._load_file_text(path)
+                return
+            if current_size == self._last_size:
+                return
+
+            with path.open("r", encoding="utf-8", errors="replace") as f:
+                f.seek(self._last_size)
+                new_text = f.read()
+
+            if new_text:
+                self.text_view.moveCursor(QTextCursor.MoveOperation.End)
+                self.text_view.insertPlainText(new_text)
+                self.text_view.moveCursor(QTextCursor.MoveOperation.End)
+            self._last_size = current_size
+        except Exception as exc:
+            logger.warning("Could not tail log file %s: %s", path, exc)
+
+    def _load_file_text(self, path: Path) -> None:
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
             self.text_view.setPlainText(text)
             scrollbar = self.text_view.verticalScrollBar()
             if scrollbar is not None:
                 scrollbar.setValue(scrollbar.maximum())
+            self._last_size = path.stat().st_size if path.exists() else 0
         except Exception as exc:
             self.text_view.setPlainText(f"Could not read {path}: {exc}")
 
@@ -215,6 +282,16 @@ class LogViewerWidget(QWidget):
             return
         path_str = item.data(Qt.ItemDataRole.UserRole)
         path = Path(path_str)
+
+        current_log = get_current_log_file()
+        if current_log is not None and path == current_log:
+            QMessageBox.information(
+                self,
+                "Cannot delete current log",
+                "The currently active log file cannot be deleted while the app is running. "
+                "Stop the app first, or delete this file after closing Flow-LoL.",
+            )
+            return
 
         reply = QMessageBox.question(
             self,
@@ -233,6 +310,60 @@ class LogViewerWidget(QWidget):
         except Exception as exc:
             QMessageBox.critical(self, "Error", f"Could not delete file:\n{exc}")
             logger.error("Failed to delete %s: %s", path, exc)
+
+    def _delete_all(self) -> None:
+        if not self.logs_dir.exists():
+            return
+        current_log = get_current_log_file()
+        all_files = sorted(self.logs_dir.glob("*.log"))
+        deletable = [p for p in all_files if current_log is None or p != current_log]
+
+        if not all_files:
+            QMessageBox.information(self, "Delete all logs", "No log files to delete.")
+            return
+        if not deletable:
+            QMessageBox.information(
+                self,
+                "Delete all logs",
+                "Only the currently active log file is present. Stop the app to delete it.",
+            )
+            return
+
+        reply = QMessageBox.question(
+            self,
+            "Delete all logs",
+            f"Delete {len(deletable)} older log file(s) in {self.logs_dir}?\n"
+            "The current log file will be kept because it is still in use.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        deleted = 0
+        failed: list[str] = []
+        for path in deletable:
+            try:
+                path.unlink()
+                deleted += 1
+            except Exception as exc:
+                failed.append(f"{path.name}: {exc}")
+                logger.error("Failed to delete %s: %s", path, exc)
+
+        self.refresh_list()
+        if failed:
+            QMessageBox.warning(
+                self,
+                "Delete all logs",
+                f"Deleted {deleted} file(s). {len(failed)} failed:\n" + "\n".join(failed[:5]),
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Delete all logs",
+                f"Deleted {deleted} older log file(s). The current log was kept.",
+            )
+        logger.info("Deleted %s log file(s)", deleted)
 
 
 class LogsWidget(QWidget):

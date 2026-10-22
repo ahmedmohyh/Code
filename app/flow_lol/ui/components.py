@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtProperty, pyqtSignal
+from PyQt6.QtGui import QColor, QPainter, QPaintEvent
 from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -86,10 +87,12 @@ class ToggleActionButton(QPushButton):
         self.active_text = active_text
         self.idle_role = idle_role
         self.active_role = active_role
+        self._active = False
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.set_active(False)
 
     def set_active(self, active: bool) -> None:
+        self._active = active
         self.setText(self.active_text if active else self.idle_text)
         role = self.active_role if active else self.idle_role
         self.setProperty("role", role)
@@ -98,7 +101,7 @@ class ToggleActionButton(QPushButton):
         self.update()
 
     def is_active(self) -> bool:
-        return self.text() == self.active_text
+        return self._active
 
 
 class StatusPill(QLabel):
@@ -175,3 +178,118 @@ class CompactActionBar(QWidget):
 
     def add_stretch(self) -> None:
         self._box.addStretch(1)
+
+
+class StatusLed(QWidget):
+    """Small circular LED indicator."""
+
+    def __init__(
+        self,
+        color: str = Colors.TEXT_MUTED,
+        size: int = 12,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._color = color
+        self._size = size
+        self.setFixedSize(size, size)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+
+    def set_color(self, color: str) -> None:
+        self._color = color
+        self.update()
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(self._color))
+        painter.drawEllipse(0, 0, self._size, self._size)
+        painter.end()
+
+
+class Switch(QWidget):
+    """Animated ON/OFF toggle switch.
+
+    Emits toggled(bool) when the user changes the switch.
+    """
+
+    toggled = pyqtSignal(bool)
+
+    _TRACK_WIDTH = 44
+    _TRACK_HEIGHT = 24
+    _KNOB_DIAMETER = 18
+
+    def __init__(
+        self,
+        checked: bool = False,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self._checked = checked
+        self._knob_x = self._end_x() if checked else self._start_x()
+        self.setFixedSize(self._TRACK_WIDTH, self._TRACK_HEIGHT)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+
+        self._animation = QPropertyAnimation(self, b"knob_x")
+        self._animation.setDuration(120)
+        self._animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+
+    def isChecked(self) -> bool:
+        return self._checked
+
+    def setChecked(self, checked: bool) -> None:
+        if checked == self._checked:
+            return
+        self._checked = checked
+        self._animate_to(self._end_x() if checked else self._start_x())
+        self.update()
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.setChecked(not self._checked)
+            self.toggled.emit(self._checked)
+        super().mousePressEvent(event)
+
+    def paintEvent(self, event: QPaintEvent) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        track_color = Colors.SUCCESS if self._checked else Colors.BORDER
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(track_color))
+        painter.drawRoundedRect(
+            0,
+            0,
+            self._TRACK_WIDTH,
+            self._TRACK_HEIGHT,
+            self._TRACK_HEIGHT / 2,
+            self._TRACK_HEIGHT / 2,
+        )
+
+        painter.setBrush(QColor(Colors.SURFACE))
+        y = (self._TRACK_HEIGHT - self._KNOB_DIAMETER) / 2
+        painter.drawEllipse(int(self._knob_x), int(y), self._KNOB_DIAMETER, self._KNOB_DIAMETER)
+        painter.end()
+
+    def _start_x(self) -> float:
+        return 3.0
+
+    def _end_x(self) -> float:
+        return self._TRACK_WIDTH - self._KNOB_DIAMETER - 3.0
+
+    def _animate_to(self, target: float) -> None:
+        self._animation.stop()
+        self._animation.setStartValue(self._knob_x)
+        self._animation.setEndValue(target)
+        self._animation.start()
+
+    def get_knob_x(self) -> float:
+        return self._knob_x
+
+    def set_knob_x(self, value: float) -> None:
+        self._knob_x = value
+        self.update()
+
+    knob_x = pyqtProperty(float, get_knob_x, set_knob_x)

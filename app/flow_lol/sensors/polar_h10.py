@@ -68,7 +68,7 @@ class PolarH10Stream:
         """
         if address:
             logger.info("Using configured H10 address %s (no scan)", address)
-            return BLEDevice(address, name=self.device_name)
+            return BLEDevice(address, name=self.device_name, details=None)
 
         logger.info("Scanning for %s...", self.device_name)
         return await BleakScanner.find_device_by_filter(

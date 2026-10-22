@@ -115,29 +115,36 @@ def stylesheet() -> str:
     QPushButton {{
         background: {c.SURFACE_DIM};
         border: 1px solid {c.BORDER};
+        border-bottom: 2px solid #9ca3af;
         border-radius: {s.RADIUS_SM}px;
         padding: 8px 16px;
+        min-width: 110px;
         color: {c.TEXT};
-        font-weight: 500;
+        font-weight: 600;
     }}
 
     QPushButton:hover {{
         background: {c.BORDER};
+        border-color: {c.TEXT_MUTED};
     }}
 
     QPushButton:pressed {{
         background: #d1d5db;
+        border-bottom: 1px solid #9ca3af;
+        margin-top: 1px;
     }}
 
     QPushButton:disabled {{
         background: {c.BORDER};
         color: {c.TEXT_MUTED};
         border-color: {c.BORDER};
+        border-bottom: 2px solid {c.BORDER};
     }}
 
     QPushButton:checked {{
         background: {c.PRIMARY};
         border-color: {c.PRIMARY};
+        border-bottom: 2px solid {c.PRIMARY_PRESSED};
         color: white;
     }}
 
@@ -150,6 +157,7 @@ def stylesheet() -> str:
     QPushButton[role="primary"] {{
         background: {c.PRIMARY};
         border-color: {c.PRIMARY};
+        border-bottom: 2px solid {c.PRIMARY_PRESSED};
         color: white;
     }}
 
@@ -161,18 +169,26 @@ def stylesheet() -> str:
     QPushButton[role="primary"]:pressed {{
         background: {c.PRIMARY_PRESSED};
         border-color: {c.PRIMARY_PRESSED};
+        border-bottom: 1px solid {c.PRIMARY_PRESSED};
+        margin-top: 1px;
     }}
 
     /* Danger / stop button */
     QPushButton[role="danger"] {{
         background: {c.DANGER};
         border-color: {c.DANGER};
+        border-bottom: 2px solid {c.DANGER_HOVER};
         color: white;
     }}
 
     QPushButton[role="danger"]:hover {{
         background: {c.DANGER_HOVER};
         border-color: {c.DANGER_HOVER};
+    }}
+
+    QPushButton[role="danger"]:pressed {{
+        border-bottom: 1px solid {c.DANGER_HOVER};
+        margin-top: 1px;
     }}
 
     /* Icon-only small button */
@@ -298,6 +314,20 @@ def stylesheet() -> str:
         color: white;
     }}
 
+    /* Dialogs / message boxes ----------------------------------------- */
+    QMessageBox {{
+        background: {c.SURFACE};
+    }}
+
+    QMessageBox QLabel {{
+        color: {c.TEXT};
+        font-size: {Fonts.BODY}pt;
+    }}
+
+    QMessageBox QPushButton {{
+        min-width: 80px;
+    }}
+
     /* Labels ------------------------------------------------------------ */
     QLabel {{
         color: {c.TEXT};
@@ -305,6 +335,11 @@ def stylesheet() -> str:
 
     QLabel[role="muted"] {{
         color: {c.TEXT_SECONDARY};
+    }}
+
+    QLabel[role="error"] {{
+        color: {c.DANGER};
+        font-weight: 600;
     }}
 
     QLabel[role="heading"] {{
@@ -320,11 +355,44 @@ def stylesheet() -> str:
     /* Menu / tabs ------------------------------------------------------- */
     QMenuBar {{
         background: {c.SURFACE};
+        color: {c.TEXT};
         border-bottom: 1px solid {c.BORDER};
+    }}
+
+    QMenuBar::item {{
+        background: transparent;
+        color: {c.TEXT};
+        padding: 4px 12px;
     }}
 
     QMenuBar::item:selected {{
         background: {c.SURFACE_DIM};
+        color: {c.TEXT};
+    }}
+
+    QMenu {{
+        background: {c.SURFACE};
+        color: {c.TEXT};
+        border: 1px solid {c.BORDER};
+        border-radius: {s.RADIUS_SM}px;
+        padding: 4px 0px;
+    }}
+
+    QMenu::item {{
+        background: transparent;
+        color: {c.TEXT};
+        padding: 6px 20px;
+    }}
+
+    QMenu::item:selected {{
+        background: {c.PRIMARY};
+        color: {c.SURFACE};
+    }}
+
+    QMenu::separator {{
+        height: 1px;
+        background: {c.BORDER};
+        margin: 4px 8px;
     }}
 
     QTabWidget::pane {{
@@ -340,19 +408,30 @@ def stylesheet() -> str:
         border-bottom: none;
         border-top-left-radius: {s.RADIUS_SM}px;
         border-top-right-radius: {s.RADIUS_SM}px;
-        padding: 8px 16px;
-        margin-right: 2px;
+        padding: 8px 14px;
+        margin-right: 3px;
         color: {c.TEXT_SECONDARY};
+        font-weight: 500;
+    }}
+
+    QTabBar::tab:hover {{
+        background: {c.BORDER};
+        color: {c.TEXT};
     }}
 
     QTabBar::tab:selected {{
         background: {c.SURFACE};
         color: {c.PRIMARY};
-        border-bottom: 2px solid {c.PRIMARY};
+        border-bottom: 3px solid {c.PRIMARY};
+        font-weight: 600;
     }}
 
     QTabBar::tab:!selected {{
-        margin-top: 2px;
+        margin-top: 3px;
+    }}
+
+    QTabBar::tab:selected:!selected {{
+        margin-top: 0px;
     }}
 
     /* Splitter ---------------------------------------------------------- */

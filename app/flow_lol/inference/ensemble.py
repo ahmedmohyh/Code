@@ -16,8 +16,15 @@ from flow_lol.utils.paths import models_dir
 logger = logging.getLogger(__name__)
 
 
-def _apply_z_standardiser(X: np.ndarray, scaler: dict[str, Any]) -> np.ndarray:
-    """Apply mean/std normalisation from a fitted scaler dict."""
+
+
+def _apply_z_standardiser(X: np.ndarray, scaler: dict[str, Any], valid_cols: np.ndarray | None = None) -> np.ndarray:
+    """Apply mean/std normalisation from a fitted scaler dict.
+
+    If ``valid_cols`` is provided and columns were actually dropped from ``X``,
+    drop the same entries from mean/std before scaling. This keeps training and
+    runtime column counts aligned when some features are NaN at runtime.
+    """
     if not scaler.get("active", True):
         return X
     mean = scaler.get("mean_")
@@ -26,6 +33,13 @@ def _apply_z_standardiser(X: np.ndarray, scaler: dict[str, Any]) -> np.ndarray:
         return X
     mean = np.array(mean)
     std = np.array(std)
+    if (
+        valid_cols is not None
+        and mean.shape[0] == valid_cols.shape[0]
+        and X.shape[1] == int(valid_cols.sum())
+    ):
+        mean = mean[valid_cols]
+        std = std[valid_cols]
     return (X - mean) / std
 
 
@@ -106,14 +120,22 @@ class ClassifierEnsemble:
         if baseline is not None:
             X = _apply_baseline(X, baseline)
 
-        # Drop all-NaN columns that were dropped during training.
-        valid_cols = ~np.all(np.isnan(X), axis=0)
-        X = X[:, valid_cols]
-
-        # Z-standardisation using training statistics.
+        # Identify all-NaN columns but do NOT drop them. The exported models were
+        # trained on a fixed 12-feature vector; dropping columns at runtime makes
+        # sklearn complain about mismatched feature counts. Instead, impute any
+        # NaN with the training mean (which becomes 0 after z-score scaling).
         scaler = bundle.get("scaler")
         if scaler is not None and scaler.get("active", True):
+            mean = scaler.get("mean_")
+            if mean is not None:
+                mean_arr = np.array(mean)
+                for col_idx in range(X.shape[1]):
+                    if col_idx < len(mean_arr) and np.isnan(X[0, col_idx]):
+                        X[0, col_idx] = mean_arr[col_idx]
             X = _apply_z_standardiser(X, scaler)
+        else:
+            # No scaler: replace remaining NaN with 0 so the model sees a clean vector.
+            X = np.nan_to_num(X, nan=0.0)
 
         # Outlier handling is kept as a data-quality flag but does not block
         # prediction; real-time users may have different distributions than

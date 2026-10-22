@@ -6,13 +6,14 @@ import logging
 import threading
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Callable, List, Optional
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_FPS = 15
 DEFAULT_WIDTH = 640
 DEFAULT_HEIGHT = 480
+SNAPSHOT_INTERVAL_SECONDS = 5
 
 
 class WebcamRecorder:
@@ -26,21 +27,28 @@ class WebcamRecorder:
     def __init__(
         self,
         output_dir: Path,
+        snapshot_dir: Optional[Path] = None,
         enabled: bool = True,
         fps: int = DEFAULT_FPS,
         width: int = DEFAULT_WIDTH,
         height: int = DEFAULT_HEIGHT,
+        snapshot_interval_seconds: int = SNAPSHOT_INTERVAL_SECONDS,
+        on_snapshot: Optional[Callable[[Path], None]] = None,
     ) -> None:
         self.output_dir = Path(output_dir)
+        self.snapshot_dir = Path(snapshot_dir) if snapshot_dir else self.output_dir / "snapshots"
         self.enabled = enabled
         self.fps = fps
         self.width = width
         self.height = height
+        self.snapshot_interval_seconds = snapshot_interval_seconds
+        self.on_snapshot = on_snapshot
 
         self._active = False
         self._thread: Optional[threading.Thread] = None
         self._output_path: Optional[Path] = None
         self._stop_event = threading.Event()
+        self._snapshots: List[Path] = []
 
     def start(self, session_id: int) -> Optional[Path]:
         """Start recording if enabled. Returns the output path or None."""
@@ -104,10 +112,10 @@ class WebcamRecorder:
             cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
             cap.set(cv2.CAP_PROP_FPS, self.fps)
 
-            # Use a more robust container codec.  'avc1' generally produces
-            # playable MP4s even if the recording is very short, as long as the
-            # writer is released properly.
-            fourcc = cv2.VideoWriter_fourcc(*"avc1")
+            # On Windows the openh264 DLL is usually missing, so avc1 fails and
+            # falls back only after several seconds. Use mp4v directly for fast,
+            # reliable startup. The resulting MP4 plays in the in-app Qt player.
+            fourcc = cv2.VideoWriter_fourcc(*"mp4v")
             writer = cv2.VideoWriter(
                 str(self._output_path),
                 fourcc,
@@ -115,30 +123,26 @@ class WebcamRecorder:
                 (self.width, self.height),
             )
             if not writer.isOpened():
-                # Fallback to mp4v if the H.264 codec is unavailable.
-                logger.warning("avc1 writer not available, falling back to mp4v")
-                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-                writer = cv2.VideoWriter(
-                    str(self._output_path),
-                    fourcc,
-                    float(self.fps),
-                    (self.width, self.height),
-                )
-                if not writer.isOpened():
-                    logger.error("Could not open video writer for %s", self._output_path)
-                    return
+                logger.error("Could not open video writer for %s", self._output_path)
+                return
 
             # Read a few frames to stabilise the camera before writing.
             for _ in range(3):
                 cap.read()
 
+            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
             frame_time = 1.0 / self.fps
+            frame_count = 0
+            snapshot_frames = max(1, int(self.fps * self.snapshot_interval_seconds))
             while not self._stop_event.is_set():
                 ok, frame = cap.read()
                 if not ok:
                     logger.warning("Webcam frame capture failed; stopping")
                     break
                 writer.write(frame)
+                frame_count += 1
+                if frame_count % snapshot_frames == 0:
+                    self._save_snapshot(frame)
                 # Small sleep to keep the loop at roughly the target FPS.
                 time.sleep(frame_time)
         except Exception as exc:
@@ -149,6 +153,25 @@ class WebcamRecorder:
                 writer.release()
             if cap is not None:
                 cap.release()
+
+    def _save_snapshot(self, frame: object) -> None:
+        """Save a single frame as a JPG snapshot."""
+        try:
+            import cv2
+
+            timestamp = time.strftime("%Y%m%d_%H%M%S")
+            path = self.snapshot_dir / f"snapshot_{timestamp}_{int(time.time() * 1000) % 1000}.jpg"
+            cv2.imwrite(str(path), frame)
+            self._snapshots.append(path)
+            logger.debug("Webcam snapshot saved: %s", path)
+            if self.on_snapshot:
+                self.on_snapshot(path)
+        except Exception as exc:
+            logger.warning("Could not save webcam snapshot: %s", exc)
+
+    def get_snapshots(self) -> List[Path]:
+        """Return paths of snapshots captured during this recording."""
+        return list(self._snapshots)
 
     @staticmethod
     def is_available() -> bool:
