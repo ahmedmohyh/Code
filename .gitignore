@@ -58,3 +58,11 @@ Thumbs.db
 venv/
 env/
 conda-env/
+
+# PyInstaller / deployment artifacts
+*.exe
+*.spec
+FlowLoL-Deploy/
+app/dist/
+app/build/
+app/FlowLoL-Deploy/

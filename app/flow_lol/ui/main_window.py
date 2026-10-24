@@ -387,6 +387,18 @@ class MainWindow(QMainWindow):
         self.game_mode_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self.game_mode_combo)
 
+        # Webcam toggle (shown once a session is running)
+        self.webcam_toggle = ToggleActionButton(
+            idle_text="▶  Enable webcam",
+            active_text="■  Disable webcam",
+            idle_role="primary",
+            active_role="danger",
+        )
+        self.webcam_toggle.setToolTip("Enable webcam recording once a session is active")
+        self.webcam_toggle.setVisible(False)
+        self.webcam_toggle.clicked.connect(self._on_webcam_toggle)
+        layout.addWidget(self.webcam_toggle)
+
         return header
 
     def _create_status_card(self) -> CardWidget:
