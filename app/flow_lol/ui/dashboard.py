@@ -9,8 +9,8 @@ from typing import Any, Dict, List, Optional
 
 import os
 
-from PyQt6.QtCore import QPoint, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPolygon
+from PyQt6.QtCore import QPoint, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygon
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
     QSizePolicy,
     QSlider,
     QSplitter,
+    QStackedWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -450,13 +451,16 @@ class DashboardWidget(QWidget):
     """Post-game dashboard for reviewing sessions, matches, and flow predictions."""
 
     session_changed = pyqtSignal(object)
+    test_webcam_clicked = pyqtSignal()
 
     def __init__(
         self,
+        settings: Any | None = None,
         webcam_dir: Optional[Path] = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
+        self.settings = settings
         self.repo = SessionRepository()
         self.webcam_dir = Path(webcam_dir) if webcam_dir else default_data_dir() / "webcam"
         self._sessions: List[Dict[str, Any]] = []
@@ -495,6 +499,10 @@ class DashboardWidget(QWidget):
         actions = CompactActionBar()
         self.refresh_btn = actions.add_button("🔄 Refresh")
         self.refresh_btn.clicked.connect(self.refresh_sessions)
+
+        self.test_webcam_btn = actions.add_button("📹 Test webcam")
+        self.test_webcam_btn.setToolTip("Quickly check or toggle the webcam")
+        self.test_webcam_btn.clicked.connect(self._on_test_webcam)
 
         self.mark_finished_btn = actions.add_button("✓ Mark finished")
         self.mark_finished_btn.setEnabled(False)
@@ -738,6 +746,10 @@ class DashboardWidget(QWidget):
         median = sorted(diffs)[len(diffs) // 2]
         return max(1.0, median)
 
+    def _on_test_webcam(self) -> None:
+        """Emit signal so MainWindow can run the actual webcam test/toggle."""
+        self.test_webcam_clicked.emit()
+
     def _on_view_mode_changed(self, index: int) -> None:
         mode = self.view_combo.itemData(index)
         if mode:
@@ -746,10 +758,15 @@ class DashboardWidget(QWidget):
     def _on_prediction_clicked(self, prediction: Dict[str, Any]) -> None:
         if self._current_session_id is None:
             return
+        # Use the configured window size so the popup shows the exact prediction window.
+        window_seconds = 60
+        if self.settings is not None:
+            window_seconds = max(1, getattr(self.settings, "window_seconds", 60))
         dialog = PredictionInspectDialog(
             prediction=prediction,
             session_id=self._current_session_id,
             webcam_dir=self.webcam_dir,
+            window_seconds=window_seconds,
             parent=self,
         )
         dialog.exec()
@@ -922,12 +939,14 @@ class PredictionInspectDialog(QDialog):
         prediction: Dict[str, Any],
         session_id: int,
         webcam_dir: Path,
+        window_seconds: float = 30.0,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self.prediction = prediction
         self.session_id = session_id
         self.webcam_dir = webcam_dir
+        self._window_ms = int(window_seconds * 1000)
         self._video_path: Optional[Path] = None
         self._video_start_ts: Optional[float] = None
         self._auto_seek_done = False
@@ -953,22 +972,29 @@ class PredictionInspectDialog(QDialog):
         summary.setWordWrap(True)
         layout.addWidget(summary)
 
-        votes_card = CardWidget("Per-model votes")
-        votes_layout = votes_card.content_layout()
-        votes_layout.setSpacing(0)
-        self.vote_list = QListWidget()
-        self.vote_list.setMaximumHeight(130)
+        # Per-model votes in a single horizontal row so no scrolling is needed.
+        votes_layout = QHBoxLayout()
+        votes_layout.setSpacing(Spacing.MD)
         votes = prediction.get("votes", {})
-        for name, vote in sorted(votes.items()):
-            icon = "✅" if vote == 1 else "❌"
-            item = QListWidgetItem(f"{icon}  {name}")
-            self.vote_list.addItem(item)
-        if not votes:
-            self.vote_list.addItem("No vote data available")
-        votes_layout.addWidget(self.vote_list)
-        layout.addWidget(votes_card)
+        if votes:
+            for name, vote in sorted(votes.items()):
+                icon = "✅" if vote == 1 else "❌"
+                vote_label = QLabel(f"<b>{icon} {name}</b>")
+                vote_label.setStyleSheet(
+                    f"background: {Colors.SURFACE_DIM};"
+                    f"border: 1px solid {Colors.BORDER};"
+                    f"border-radius: {Spacing.RADIUS_SM}px;"
+                    f"padding: 4px 10px;"
+                )
+                votes_layout.addWidget(vote_label)
+            votes_layout.addStretch(1)
+        else:
+            no_votes = QLabel("No vote data available")
+            no_votes.setProperty("role", "muted")
+            votes_layout.addWidget(no_votes)
+            votes_layout.addStretch(1)
+        layout.addLayout(votes_layout)
 
-        # Inline media player -------------------------------------------------
         media_card = CardWidget("Media preview")
         media_layout = media_card.content_layout()
 
@@ -989,19 +1015,16 @@ class PredictionInspectDialog(QDialog):
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        self.image_overlay.hide()
 
-        self.preview_stack = QWidget()
+        self.preview_stack = QStackedWidget()
         self.preview_stack.setMinimumHeight(340)
         self.preview_stack.setSizePolicy(
             QSizePolicy.Policy.Expanding,
             QSizePolicy.Policy.Expanding,
         )
-        preview_stack_layout = QVBoxLayout(self.preview_stack)
-        preview_stack_layout.setContentsMargins(0, 0, 0, 0)
-        preview_stack_layout.setSpacing(0)
-        preview_stack_layout.addWidget(self.video_widget, stretch=1)
-        preview_stack_layout.addWidget(self.image_overlay, stretch=1)
+        self.preview_stack.addWidget(self.video_widget)
+        self.preview_stack.addWidget(self.image_overlay)
+        self.preview_stack.setCurrentWidget(self.video_widget)
         media_layout.addWidget(self.preview_stack, stretch=1)
 
         self.player.positionChanged.connect(self._on_position_changed)
@@ -1049,15 +1072,37 @@ class PredictionInspectDialog(QDialog):
 
         layout.addWidget(media_card, stretch=1)
 
+        # Snapshots gallery ---------------------------------------------------
         snapshots_card = CardWidget("Snapshots around prediction")
         snaps_layout = snapshots_card.content_layout()
-        self.snap_list = QListWidget()
-        self.snap_list.setMaximumHeight(220)
-        self.snap_list.setAlternatingRowColors(True)
-        self.snap_list.itemClicked.connect(self._show_snapshot_image)
-        snaps_layout.addWidget(self.snap_list)
-        layout.addWidget(snapshots_card)
-        self._populate_snapshots(ts)
+        snaps_layout.setSpacing(Spacing.SM)
+
+        self.snap_gallery = QListWidget()
+        self.snap_gallery.setViewMode(QListWidget.ViewMode.IconMode)
+        self.snap_gallery.setFlow(QListWidget.Flow.LeftToRight)
+        self.snap_gallery.setWrapping(True)
+        self.snap_gallery.setResizeMode(QListWidget.ResizeMode.Adjust)
+        self.snap_gallery.setSpacing(8)
+        self.snap_gallery.setIconSize(QSize(110, 90))
+        self.snap_gallery.setGridSize(QSize(140, 130))
+        self.snap_gallery.setMinimumHeight(220)
+        self.snap_gallery.setMaximumHeight(340)
+        self.snap_gallery.setAlternatingRowColors(False)
+        self.snap_gallery.itemClicked.connect(self._show_snapshot_image)
+        snaps_layout.addWidget(self.snap_gallery, stretch=1)
+
+        snap_nav = QHBoxLayout()
+        snap_nav.setSpacing(Spacing.MD)
+        self.prev_snap_btn = QPushButton("◀ Previous snapshot")
+        self.prev_snap_btn.clicked.connect(self._previous_snapshot)
+        self.next_snap_btn = QPushButton("Next snapshot ▶")
+        self.next_snap_btn.clicked.connect(self._next_snapshot)
+        snap_nav.addWidget(self.prev_snap_btn)
+        snap_nav.addWidget(self.next_snap_btn)
+        snap_nav.addStretch()
+        snaps_layout.addLayout(snap_nav)
+
+        layout.addWidget(snapshots_card, stretch=1)
 
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(self.accept)
@@ -1065,6 +1110,9 @@ class PredictionInspectDialog(QDialog):
 
         # Try to pre-load the session video and seek to the prediction time.
         self._load_session_video()
+
+        # Load snapshot thumbnails for this prediction.
+        self._populate_snapshots(ts)
 
     # ------------------------------------------------------------------
     # Helpers
@@ -1116,7 +1164,11 @@ class PredictionInspectDialog(QDialog):
         self._video_start_ts = self._video_start_timestamp(video)
         pred_ts = self.prediction.get("timestamp", 0.0)
         offset_ms = self._offset_ms(pred_ts)
-        self.media_info.setText(f"Video: {video.name}  |  offset {self._format_ms(offset_ms)}")
+        window_s = getattr(self, "_window_ms", 30000) // 1000
+        self.media_info.setText(
+            f"Video: {video.name}  |  offset {self._format_ms(offset_ms)}"
+            f"  |  window {window_s}s"
+        )
         self.player.setSource(QUrl.fromLocalFile(str(video)))
         self.play_btn.setEnabled(True)
         self.stop_btn.setEnabled(True)
@@ -1131,32 +1183,33 @@ class PredictionInspectDialog(QDialog):
         if self._video_path is None:
             self._load_session_video()
         offset_ms = self._offset_ms(self.prediction.get("timestamp", 0.0))
-        self.image_overlay.hide()
-        self.video_widget.show()
+        self.preview_stack.setCurrentWidget(self.video_widget)
         self.player.setPosition(offset_ms)
         self.player.play()
         self.play_btn.setText("⏸")
 
     # ------------------------------------------------------------------
-    # Windowed playback: keep the playhead inside a ±30 s preview window.
+    # Windowed playback: keep the playhead inside the exact prediction window.
     # ------------------------------------------------------------------
 
     def _preview_bounds_ms(self) -> tuple[int, int]:
-        """Return start/end offset in ms for the 30 s clip around the prediction."""
+        """Return start/end offset in ms for the exact prediction window clip."""
         offset_ms = self._offset_ms(self.prediction.get("timestamp", 0.0))
+        # The popup is created with the window size in seconds from the settings.
+        window_ms = getattr(self, "_window_ms", 30000)
         duration = self.player.duration()
-        end_ms = offset_ms + 30000
+        start_ms = max(0, offset_ms)
+        end_ms = start_ms + window_ms
         if duration > 0:
             end_ms = min(end_ms, duration)
-        return max(0, offset_ms - 15000), end_ms
+        return start_ms, end_ms
 
     def _clamp_to_preview_window(self) -> None:
-        """Pause playback when the playhead leaves the selected 30 s preview."""
+        """Loop playback inside the selected prediction window."""
         position = self.player.position()
         start_ms, end_ms = self._preview_bounds_ms()
         if position < start_ms or position >= end_ms:
-            self.player.pause()
-            self.play_btn.setText("▶")
+            self.player.setPosition(start_ms)
 
     def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
         if status == QMediaPlayer.MediaStatus.LoadedMedia and not self._auto_seek_done:
@@ -1185,10 +1238,9 @@ class PredictionInspectDialog(QDialog):
             self.player.pause()
             self.play_btn.setText("▶")
         else:
-            self.image_overlay.hide()
-            self.video_widget.show()
-            start_ms, end_ms = self._preview_bounds_ms()
-            if self.player.position() < start_ms or self.player.position() >= end_ms:
+            self.preview_stack.setCurrentWidget(self.video_widget)
+            start_ms, _ = self._preview_bounds_ms()
+            if self.player.position() < start_ms:
                 self.player.setPosition(start_ms)
             self.player.play()
             self.play_btn.setText("⏸")
@@ -1212,42 +1264,86 @@ class PredictionInspectDialog(QDialog):
     # ------------------------------------------------------------------
 
     def _populate_snapshots(self, ts: float) -> None:
-        self.snap_list.clear()
+        self.snap_gallery.clear()
+        self._snapshot_paths: List[Path] = []
         if not self.webcam_dir.exists():
-            self.snap_list.addItem("No webcam folder found")
+            self.snap_gallery.addItem("No webcam folder found")
             return
+
         snaps: List[Path] = []
         # New layout: session folders.
         for folder in self.webcam_dir.iterdir():
             if folder.is_dir() and folder.name.startswith(f"session_{self.session_id}_"):
                 snap_dir = folder / "snapshots"
                 if snap_dir.exists():
-                    snaps.extend(self._collect_snapshots(snap_dir, ts))
+                    snaps.extend(self._collect_snapshots(snap_dir))
         # Old layout: top-level snapshots folder.
         if not snaps:
             old_snap_dir = self.webcam_dir / "snapshots"
             if old_snap_dir.exists():
-                snaps.extend(self._collect_snapshots(old_snap_dir, ts))
+                snaps.extend(self._collect_snapshots(old_snap_dir))
+
+        # Show the snapshots closest in time to the prediction first.
         snaps.sort(key=lambda p: abs(p.stat().st_mtime - ts))
+        snaps = snaps[:50]
+        self._snapshot_paths = snaps
+
         for path in snaps:
             item = QListWidgetItem(path.name)
             item.setData(Qt.ItemDataRole.UserRole, str(path))
-            self.snap_list.addItem(item)
-        if self.snap_list.count() == 0:
-            self.snap_list.addItem("No snapshots within ±30 seconds")
+            item.setToolTip(str(path))
+            icon = self._snapshot_thumbnail(str(path))
+            if icon is not None:
+                item.setIcon(icon)
+            else:
+                item.setText(f"📷 {path.name}")
+            item.setSizeHint(QSize(120, 120))
+            self.snap_gallery.addItem(item)
+
+        if self.snap_gallery.count() == 0:
+            self.snap_gallery.addItem("No snapshots found for this session")
+        self._update_snapshot_nav_buttons()
+
+    def _snapshot_thumbnail(self, path: str) -> Optional[QIcon]:
+        """Return a 110x90 thumbnail icon for a snapshot image."""
+        try:
+            pixmap = QPixmap(path)
+            if pixmap.isNull():
+                return None
+            scaled = pixmap.scaled(
+                QSize(110, 90),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            return QIcon(scaled)
+        except Exception:
+            return None
 
     @staticmethod
-    def _collect_snapshots(snap_dir: Path, ts: float) -> List[Path]:
-        """Return snapshots in snap_dir whose mtime is within ±30 s of ts."""
-        result: List[Path] = []
-        for path in snap_dir.glob("*.jpg"):
-            try:
-                file_ts = path.stat().st_mtime
-            except Exception:
-                file_ts = 0.0
-            if abs(file_ts - ts) <= 30.0:
-                result.append(path)
-        return result
+    def _collect_snapshots(snap_dir: Path) -> List[Path]:
+        """Return all JPG snapshots in snap_dir."""
+        return [p for p in snap_dir.glob("*.jpg") if p.is_file()]
+
+    def _update_snapshot_nav_buttons(self) -> None:
+        row = self.snap_gallery.currentRow()
+        self.prev_snap_btn.setEnabled(row > 0)
+        self.next_snap_btn.setEnabled(0 <= row < self.snap_gallery.count() - 1)
+
+    def _previous_snapshot(self) -> None:
+        row = self.snap_gallery.currentRow()
+        if row > 0:
+            self.snap_gallery.setCurrentRow(row - 1)
+            item = self.snap_gallery.currentItem()
+            if item is not None:
+                self._show_snapshot_image(item)
+
+    def _next_snapshot(self) -> None:
+        row = self.snap_gallery.currentRow()
+        if 0 <= row < self.snap_gallery.count() - 1:
+            self.snap_gallery.setCurrentRow(row + 1)
+            item = self.snap_gallery.currentItem()
+            if item is not None:
+                self._show_snapshot_image(item)
 
     def _show_snapshots(self) -> None:
         self._populate_snapshots(self.prediction.get("timestamp", 0.0))
@@ -1259,27 +1355,32 @@ class PredictionInspectDialog(QDialog):
         path = Path(path_str)
         self.player.stop()
         self.play_btn.setText("▶")
-        self.video_widget.hide()
-        self.image_overlay.show()
+        self.preview_stack.setCurrentWidget(self.image_overlay)
         pixmap = QPixmap(str(path))
         if pixmap.isNull():
             self.image_overlay.setText(f"Could not load {path.name}")
             self.image_overlay.setStyleSheet("background-color: #000000; color: #ffffff; font-size: 16px;")
             return
+        target_size = self.image_overlay.size()
+        if target_size.width() <= 10 or target_size.height() <= 10:
+            target_size = self.preview_stack.size()
+        if target_size.width() <= 10 or target_size.height() <= 10:
+            target_size = QSize(640, 480)
         scaled = pixmap.scaled(
-            self.image_overlay.size(),
+            target_size,
             Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation,
         )
         self.image_overlay.setPixmap(scaled)
         self.image_overlay.setStyleSheet("background-color: #000000;")
         self.media_info.setText(f"Snapshot: {path.name}")
+        self._update_snapshot_nav_buttons()
 
     def resizeEvent(self, event) -> None:
         """Rescale the current snapshot when the dialog is resized."""
         super().resizeEvent(event)
-        if self.image_overlay.isVisible():
-            current_item = self.snap_list.currentItem()
+        if self.preview_stack.currentWidget() == self.image_overlay:
+            current_item = self.snap_gallery.currentItem()
             if current_item is not None:
                 path_str = current_item.data(Qt.ItemDataRole.UserRole)
                 if path_str:

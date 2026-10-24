@@ -124,7 +124,11 @@ class MainWindow(QMainWindow):
         self._content_card.content_layout().setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedWidget()
 
-        self.dashboard = DashboardWidget(webcam_dir=Path(self.settings.webcam_save_path))
+        self.dashboard = DashboardWidget(
+            settings=self.settings,
+            webcam_dir=Path(self.settings.webcam_save_path),
+        )
+        self.dashboard.test_webcam_clicked.connect(self._on_dashboard_test_webcam)
         self.stack.addWidget(self.dashboard)
 
         self.logs = LogsWidget(logs_dir=Path(self.settings.logs_save_path))
@@ -222,7 +226,19 @@ class MainWindow(QMainWindow):
         self.sensor_status_label.setProperty("role", "muted")
         sensor_status_layout.addWidget(self.sensor_led)
         sensor_status_layout.addWidget(self.sensor_status_label)
+
+        # Webcam recording LED + label
+        self.webcam_status_layout = QHBoxLayout()
+        self.webcam_status_layout.setSpacing(Spacing.SM)
+        self.webcam_rec_led = StatusLed(color=Colors.TEXT_MUTED, size=12)
+        self.webcam_rec_label = QLabel("REC")
+        self.webcam_rec_label.setProperty("role", "muted")
+        self.webcam_status_layout.addWidget(self.webcam_rec_led)
+        self.webcam_status_layout.addWidget(self.webcam_rec_label)
+        self.webcam_status_layout.setEnabled(False)
+
         layout.addLayout(sensor_status_layout)
+        layout.addLayout(self.webcam_status_layout)
 
         layout.addStretch(1)
 
@@ -538,6 +554,28 @@ class MainWindow(QMainWindow):
     def _on_webcam_toggle(self) -> None:
         self._toggle_webcam()
 
+    def _on_dashboard_test_webcam(self) -> None:
+        """Handle the dashboard's test-webcam button.
+
+        If a session is already active, the button toggles the session webcam
+        on/off. Otherwise it does a quick availability check and reports the
+        result without recording anything.
+        """
+        if self.worker is not None and self.worker.isRunning() and self._session_active:
+            self._toggle_webcam()
+            return
+
+        self._status_label.setText("Checking webcam availability...")
+        try:
+            from flow_lol.webcam.recorder import WebcamRecorder
+
+            if WebcamRecorder.is_available():
+                self._status_label.setText("Webcam is available.")
+            else:
+                self._status_label.setText("No webcam detected. Check camera connection and Windows privacy settings.")
+        except Exception as exc:
+            self._status_label.setText(f"Webcam check failed: {exc}")
+
     def _safe_exit(self) -> None:
         """Stop any running session cleanly before closing the app."""
         if self.worker is not None and self.worker.isRunning():
@@ -722,6 +760,18 @@ class MainWindow(QMainWindow):
         self.webcam_toggle.setToolTip(webcam_tooltip)
         self.webcam.set_toggle_enabled(webcam_available, webcam_tooltip)
 
+        # Dashboard test-webcam button is always usable for availability check,
+        # but make it primary role when it can actually toggle during a session.
+        self.dashboard.test_webcam_btn.setEnabled(True)
+        if self._session_active and self._sensor_status == "connected":
+            self.dashboard.test_webcam_btn.setToolTip(
+                "Toggle webcam recording for the active session"
+            )
+        else:
+            self.dashboard.test_webcam_btn.setToolTip(
+                "Check if the webcam is available (no session is active)"
+            )
+
     def _update_status(self) -> None:
         enabled_models = [
             name
@@ -761,9 +811,19 @@ class MainWindow(QMainWindow):
         if self._webcam_recording:
             self.pill_webcam.set_text("webcam: recording")
             self.pill_webcam.set_active(True)
+            self.webcam_rec_led.set_color(Colors.DANGER)
+            self.webcam_rec_label.setText("REC")
+            self.webcam_rec_label.setProperty("role", "")
+            self.webcam_rec_label.setStyleSheet(f"color: {Colors.DANGER}; font-weight: 700;")
+            self.webcam_status_layout.setEnabled(True)
         else:
             self.pill_webcam.set_text("webcam: off")
             self.pill_webcam.set_active(False)
+            self.webcam_rec_led.set_color(Colors.TEXT_MUTED)
+            self.webcam_rec_label.setText("REC")
+            self.webcam_rec_label.setProperty("role", "muted")
+            self.webcam_rec_label.setStyleSheet("")
+            self.webcam_status_layout.setEnabled(False)
 
         self.pill_auto.set_text(f"auto-detect: {'on' if self.settings.auto_detect_game else 'off'}")
         self.pill_auto.set_active(self.settings.auto_detect_game)
