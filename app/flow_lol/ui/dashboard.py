@@ -544,20 +544,28 @@ class DashboardWidget(QWidget):
         # Navigation row under the timeline
         nav_row = QHBoxLayout()
         nav_row.setSpacing(Spacing.MD)
-        self.next_window_btn = QPushButton("⏭ Next window")
+        self.prev_window_btn = QPushButton("◀ Prev window")
+        self.prev_window_btn.setToolTip("Move the selection to the previous prediction window")
+        self.prev_window_btn.clicked.connect(self._on_previous_window)
+        self.next_window_btn = QPushButton("Next window ▶")
         self.next_window_btn.setToolTip("Move the selection to the next prediction window")
         self.next_window_btn.clicked.connect(self._on_next_window)
-        self.next_flow_btn = QPushButton("⏭ Next flow window")
+        self.prev_flow_btn = QPushButton("◀ Prev flow")
+        self.prev_flow_btn.setToolTip("Jump the selection to the previous flow window")
+        self.prev_flow_btn.clicked.connect(self._on_previous_flow_window)
+        self.next_flow_btn = QPushButton("Next flow ▶")
         self.next_flow_btn.setToolTip("Jump the selection to the next flow window")
         self.next_flow_btn.clicked.connect(self._on_next_flow_window)
         self.inspect_selected_btn = QPushButton("🔍 Inspect selected")
         self.inspect_selected_btn.setToolTip("Open the selected window in the inspection popup")
         self.inspect_selected_btn.clicked.connect(self._on_inspect_selected)
         self.inspect_selected_btn.setEnabled(False)
+        nav_row.addWidget(self.prev_window_btn)
         nav_row.addWidget(self.next_window_btn)
+        nav_row.addWidget(self.prev_flow_btn)
         nav_row.addWidget(self.next_flow_btn)
         nav_row.addWidget(self.inspect_selected_btn)
-        self.selection_info = QLabel("Click a window or use Next / Next flow")
+        self.selection_info = QLabel("Click a window or use Prev / Next")
         self.selection_info.setProperty("role", "muted")
         nav_row.addWidget(self.selection_info)
         nav_row.addStretch()
@@ -782,9 +790,13 @@ class DashboardWidget(QWidget):
 
     def _update_selection_ui(self) -> None:
         has_selection = self._selected_index >= 0 and self._selected_index < len(self._sorted_predictions)
+        n_preds = len(self._sorted_predictions)
+        has_flow = any(p.get("ensemble_label") == 1 for p in self._sorted_predictions)
         self.inspect_selected_btn.setEnabled(has_selection)
-        self.next_window_btn.setEnabled(bool(self._sorted_predictions))
-        self.next_flow_btn.setEnabled(any(p.get("ensemble_label") == 1 for p in self._sorted_predictions))
+        self.prev_window_btn.setEnabled(n_preds > 1)
+        self.next_window_btn.setEnabled(n_preds > 0)
+        self.prev_flow_btn.setEnabled(has_flow and n_preds > 1)
+        self.next_flow_btn.setEnabled(has_flow)
         if has_selection:
             pred = self._sorted_predictions[self._selected_index]
             ts = pred["timestamp"]
@@ -794,6 +806,18 @@ class DashboardWidget(QWidget):
             )
         else:
             self.selection_info.setText("Click a window or use Next / Next flow")
+
+    def _on_previous_window(self) -> None:
+        if not self._sorted_predictions:
+            return
+        n = len(self._sorted_predictions)
+        if self._selected_index < 0:
+            self._selected_index = n - 1
+        else:
+            self._selected_index = (self._selected_index - 1) % n
+        pred = self._sorted_predictions[self._selected_index]
+        self.timeline.set_selected_prediction(pred)
+        self._update_selection_ui()
 
     def _on_next_window(self) -> None:
         if not self._sorted_predictions:
@@ -805,6 +829,20 @@ class DashboardWidget(QWidget):
         pred = self._sorted_predictions[self._selected_index]
         self.timeline.set_selected_prediction(pred)
         self._update_selection_ui()
+
+    def _on_previous_flow_window(self) -> None:
+        if not self._sorted_predictions:
+            return
+        n = len(self._sorted_predictions)
+        start = self._selected_index if self._selected_index >= 0 else n - 1
+        for offset in range(1, n + 1):
+            idx = (start - offset) % n
+            if self._sorted_predictions[idx].get("ensemble_label") == 1:
+                self._selected_index = idx
+                pred = self._sorted_predictions[idx]
+                self.timeline.set_selected_prediction(pred)
+                self._update_selection_ui()
+                return
 
     def _on_next_flow_window(self) -> None:
         if not self._sorted_predictions:
