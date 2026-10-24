@@ -6,8 +6,8 @@ import logging
 
 from pathlib import Path
 
-from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QAction
+from PyQt6.QtCore import Qt, QThread, QTimer, pyqtSignal
+from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -15,10 +15,12 @@ from PyQt6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QMenu,
     QProgressBar,
     QPushButton,
     QStackedWidget,
     QStatusBar,
+    QSystemTrayIcon,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +35,8 @@ from flow_lol.ui.components import (
     ToggleActionButton,
 )
 from flow_lol.ui.dashboard import DashboardWidget
+from flow_lol.ui.edge_status import EdgeStatusWindow
+from flow_lol.ui.game_detector_thread import GameDetectorThread
 from flow_lol.ui.logs_widget import LogsWidget
 from flow_lol.ui.sensor_worker import SensorWorker
 from flow_lol.ui.settings_dialog import SettingsDialog
@@ -42,6 +46,23 @@ from flow_lol.ui.webcam_widget import WebcamWidget
 logger = logging.getLogger(__name__)
 
 GAME_MODES = ["Ranked Solo/Duo", "Ranked Flex", "Normal", "ARAM", "Custom", "Other"]
+
+
+class WebcamCheckWorker(QThread):
+    """Check webcam availability in the background so the UI does not freeze."""
+
+    result = pyqtSignal(bool, str)
+
+    def run(self) -> None:
+        try:
+            from flow_lol.webcam.recorder import WebcamRecorder
+
+            if WebcamRecorder.is_available():
+                self.result.emit(True, "")
+            else:
+                self.result.emit(False, "No webcam detected. Check camera connection and Windows privacy settings.")
+        except Exception as exc:
+            self.result.emit(False, f"Webcam check failed: {exc}")
 
 
 class MainWindow(QMainWindow):
@@ -59,11 +80,31 @@ class MainWindow(QMainWindow):
         self._sensor_connected = False
         self._h10_connecting = False
         self._session_active = False
+        self._client_connected = False
+        self._client_phase = "None"
+        self._in_match = False
+        self._is_shutting_down = False
 
         self._apply_stylesheet()
         self._create_menu()
         self._create_central_layout()
         self._create_statusbar()
+
+        # Start the League client/game detector immediately so it works even
+        # before the H10 is connected.
+        self._game_detector = GameDetectorThread(self.settings, self)
+        self._game_detector.match_started.connect(self._on_match_started)
+        self._game_detector.match_ended.connect(self._on_match_ended)
+        self._game_detector.game_event.connect(self._on_game_event)
+        self._game_detector.client_state_changed.connect(self._on_game_client_changed)
+        self._game_detector.start()
+
+        # Screen-edge status indicator (thin colored bar at top of screen).
+        self._edge_status = EdgeStatusWindow(self)
+        self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
+
+        # System tray icon so the app can run minimized to tray.
+        self._create_tray_icon()
 
         self._update_status()
 
@@ -91,6 +132,34 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut("Ctrl+Q")
         exit_action.triggered.connect(self._safe_exit)
         file_menu.addAction(exit_action)
+
+    def _create_tray_icon(self) -> None:
+        """Create a system tray icon with a context menu."""
+        self._tray_icon = QSystemTrayIcon(self)
+        self._tray_icon.setToolTip("Flow-LoL")
+        # Use a generic colored icon via QIcon fallback.
+        self._tray_icon.setIcon(QIcon.fromTheme("applications-other"))
+
+        tray_menu = QMenu(self)
+        show_action = QAction("Show Flow-LoL", self)
+        show_action.triggered.connect(self._restore_from_tray)
+        tray_menu.addAction(show_action)
+
+        edge_action = QAction("Screen-edge status", self)
+        edge_action.setCheckable(True)
+        edge_action.setChecked(self.settings.screen_edge_status_enabled)
+        edge_action.triggered.connect(self._on_tray_edge_toggle)
+        tray_menu.addAction(edge_action)
+
+        tray_menu.addSeparator()
+
+        exit_action = QAction("Exit", self)
+        exit_action.triggered.connect(self._safe_exit)
+        tray_menu.addAction(exit_action)
+
+        self._tray_icon.setContextMenu(tray_menu)
+        self._tray_icon.activated.connect(self._on_tray_activated)
+        self._tray_icon.show()
 
     def _create_central_layout(self) -> None:
         central = QWidget()
@@ -192,6 +261,11 @@ class MainWindow(QMainWindow):
         self._settings_btn.clicked.connect(self._open_settings)
         layout.addWidget(self._settings_btn)
 
+        self._exit_btn = SidebarButton("🚪", "Close app")
+        self._exit_btn.setToolTip("Safely stop all workers and exit Flow-LoL")
+        self._exit_btn.clicked.connect(self._safe_exit)
+        layout.addWidget(self._exit_btn)
+
         return sidebar
 
     def _create_header(self) -> QWidget:
@@ -237,8 +311,30 @@ class MainWindow(QMainWindow):
         self.webcam_status_layout.addWidget(self.webcam_rec_label)
         self.webcam_status_layout.setEnabled(False)
 
+        # League client open indicator LED + label
+        self.client_status_layout = QHBoxLayout()
+        self.client_status_layout.setSpacing(Spacing.SM)
+        self.client_led = StatusLed(color=Colors.TEXT_MUTED, size=12)
+        self.client_label = QLabel("LOL")
+        self.client_label.setProperty("role", "muted")
+        self.client_status_layout.addWidget(self.client_led)
+        self.client_status_layout.addWidget(self.client_label)
+        self.client_status_layout.setEnabled(False)
+
+        # Match / in-game indicator LED + label
+        self.match_status_layout = QHBoxLayout()
+        self.match_status_layout.setSpacing(Spacing.SM)
+        self.match_led = StatusLed(color=Colors.TEXT_MUTED, size=12)
+        self.match_label = QLabel("GAME")
+        self.match_label.setProperty("role", "muted")
+        self.match_status_layout.addWidget(self.match_led)
+        self.match_status_layout.addWidget(self.match_label)
+        self.match_status_layout.setEnabled(False)
+
         layout.addLayout(sensor_status_layout)
         layout.addLayout(self.webcam_status_layout)
+        layout.addLayout(self.client_status_layout)
+        layout.addLayout(self.match_status_layout)
 
         layout.addStretch(1)
 
@@ -290,18 +386,6 @@ class MainWindow(QMainWindow):
         self.game_mode_combo.setToolTip("Select game mode for manual match start")
         self.game_mode_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         layout.addWidget(self.game_mode_combo)
-
-        # Webcam toggle
-        self.webcam_toggle = ToggleActionButton(
-            idle_text="▶  Enable webcam",
-            active_text="■  Disable webcam",
-            idle_role="primary",
-            active_role="danger",
-        )
-        self.webcam_toggle.setToolTip("Enable webcam recording once a session is active")
-        self.webcam_toggle.setVisible(False)
-        self.webcam_toggle.clicked.connect(self._on_webcam_toggle)
-        layout.addWidget(self.webcam_toggle)
 
         return header
 
@@ -389,6 +473,7 @@ class MainWindow(QMainWindow):
             self._prediction_step_seconds = (
                 self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
             )
+            self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
             self._update_status()
 
     # ------------------------------------------------------------------
@@ -429,9 +514,6 @@ class MainWindow(QMainWindow):
         self.worker.prediction.connect(self._on_prediction)
         self.worker.samples.connect(self._on_samples)
         self.worker.error.connect(self._on_error)
-        self.worker.match_started.connect(self._on_match_started)
-        self.worker.match_ended.connect(self._on_match_ended)
-        self.worker.game_event.connect(self._on_game_event)
         self.worker.webcam_changed.connect(self._on_webcam_changed)
         self.worker.webcam_snapshot.connect(self._on_webcam_snapshot)
         self.worker.session_state_changed.connect(self._on_session_state_changed)
@@ -512,8 +594,13 @@ class MainWindow(QMainWindow):
             self.logs.refresh_logs()
             self.webcam.refresh_list()
             self._status_label.setText("Session stopped. H10 preview still active.")
+            self._edge_status.set_unknown()
         else:
             self._status_label.setText("Session active. Recording ECG, predictions and webcam.")
+            # If a match is already in progress when the session starts, record it retroactively.
+            if self._in_match and self.worker is not None and self.worker.isRunning():
+                mode = self.game_mode_combo.currentText()
+                self.worker.record_match_start(mode, detected=True)
         self._update_header_controls(self.worker is not None and self.worker.isRunning())
 
     def _on_match_toggle(self) -> None:
@@ -525,26 +612,15 @@ class MainWindow(QMainWindow):
             self._start_match()
 
     def _start_match(self) -> None:
-        if self.worker is None:
-            logger.warning("Cannot start match: no worker")
-            self._status_label.setText("Connect the H10 and start a session before starting a match.")
-            return
-        if not self.worker.isRunning():
-            logger.warning("Cannot start match: worker not running")
-            self._status_label.setText("Worker not running. Reconnect the H10.")
-            return
         mode = self.game_mode_combo.currentText()
         logger.info("Requesting match start: %s", mode)
         self._status_label.setText(f"Starting match ({mode})...")
-        self.worker.start_match(mode)
+        self._game_detector.start_match(mode, detected=False)
 
     def _stop_match(self) -> None:
-        if self.worker is None:
-            logger.warning("Cannot stop match: no worker")
-            return
         logger.info("Requesting match end")
         self._status_label.setText("Ending match...")
-        self.worker.end_match()
+        self._game_detector.end_match()
 
     def _toggle_webcam(self) -> None:
         if self.worker is None:
@@ -566,19 +642,29 @@ class MainWindow(QMainWindow):
             return
 
         self._status_label.setText("Checking webcam availability...")
-        try:
-            from flow_lol.webcam.recorder import WebcamRecorder
+        self.dashboard.test_webcam_btn.setEnabled(False)
+        self.dashboard.test_webcam_btn.setText("📹 Checking...")
 
-            if WebcamRecorder.is_available():
-                self._status_label.setText("Webcam is available.")
-            else:
-                self._status_label.setText("No webcam detected. Check camera connection and Windows privacy settings.")
-        except Exception as exc:
-            self._status_label.setText(f"Webcam check failed: {exc}")
+        self._webcam_check_worker = WebcamCheckWorker(self)
+        self._webcam_check_worker.result.connect(self._on_webcam_check_result)
+        self._webcam_check_worker.finished.connect(self._webcam_check_worker.deleteLater)
+        self._webcam_check_worker.start()
+
+    def _on_webcam_check_result(self, available: bool, message: str) -> None:
+        """Update the UI after the background webcam check finishes."""
+        self.dashboard.test_webcam_btn.setEnabled(True)
+        self.dashboard.test_webcam_btn.setText("📹 Test webcam")
+        if available:
+            self._status_label.setText("Webcam is available.")
+        else:
+            self._status_label.setText(message)
 
     def _safe_exit(self) -> None:
-        """Stop any running session cleanly before closing the app."""
-        if self.worker is not None and self.worker.isRunning():
+        """Stop any running session cleanly and exit the app."""
+        if self._is_shutting_down:
+            return
+
+        if self.worker is not None and self.worker.isRunning() and self._session_active:
             reply = QMessageBox.question(
                 self,
                 "Exit Flow-LoL",
@@ -589,19 +675,75 @@ class MainWindow(QMainWindow):
             if reply != QMessageBox.StandardButton.Yes:
                 return
             self._on_stop_session()
+
+        self._is_shutting_down = True
+        self._do_full_shutdown()
+        QApplication.instance().quit()
+
+    def _do_full_shutdown(self) -> None:
+        """Stop all background threads and clean up resources."""
+        if self._tray_icon is not None:
+            self._tray_icon.hide()
+
         if self.worker is not None:
-            self.worker.stop()
+            if self.worker.isRunning():
+                self.worker.stop()
+                if not self.worker.wait(5000):
+                    logger.warning("Sensor worker did not stop within 5 s")
             self.worker = None
+
+        if self._game_detector is not None:
+            if self._game_detector.isRunning():
+                self._game_detector.stop()
+                if not self._game_detector.wait(5000):
+                    logger.warning("Game detector thread did not stop within 5 s")
+            self._game_detector = None
+
+        if self._webcam_check_worker is not None and self._webcam_check_worker.isRunning():
+            self._webcam_check_worker.wait(2000)
+            self._webcam_check_worker = None
+
+        self._edge_status.set_enabled(False)
+        self._edge_status.hide()
         self.settings.save()
-        self.close()
 
     def closeEvent(self, event: object) -> None:
-        """Intercept window close to ensure clean shutdown."""
-        if self.worker is not None:
-            self.worker.stop()
-            self.worker = None
+        """Minimize to tray on X; full shutdown only when _safe_exit is used."""
+        if self._is_shutting_down:
+            self._do_full_shutdown()
+            event.accept()
+            return
+
+        if self._tray_icon is not None and self._tray_icon.isVisible():
+            self.hide()
+            self._tray_icon.showMessage(
+                "Flow-LoL",
+                "App is running in the system tray. Click the tray icon to restore.",
+                QSystemTrayIcon.MessageIcon.Information,
+                2000,
+            )
+            event.ignore()
+            return
+
+        event.ignore()
+        self._safe_exit()
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """Restore the main window when the tray icon is activated."""
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+            self._restore_from_tray()
+
+    def _restore_from_tray(self) -> None:
+        """Show and raise the main window from the system tray."""
+        self.showNormal()
+        self.raise_()
+        self.activateWindow()
+
+    def _on_tray_edge_toggle(self, checked: bool) -> None:
+        """Toggle screen-edge status from the tray context menu."""
+        self.settings.screen_edge_status_enabled = checked
         self.settings.save()
-        event.accept()
+        self._edge_status.set_enabled(checked)
 
     # ------------------------------------------------------------------
     # Worker signal handlers
@@ -666,6 +808,7 @@ class MainWindow(QMainWindow):
         )
         self.prediction_progress.setValue(0)
         self.prediction_progress.setFormat("0 s")
+        self._edge_status.update_state(label)
 
     def _tick_prediction_progress(self) -> None:
         import time
@@ -702,6 +845,8 @@ class MainWindow(QMainWindow):
         source = "auto-detected" if detected else "manual"
         self._status_label.setText(f"Match started ({source}): {game_mode}")
         logger.info("Match started: %s (%s)", game_mode, source)
+        if self.worker is not None and self.worker.isRunning() and self._session_active:
+            self.worker.record_match_start(game_mode, detected=detected)
         self._update_header_controls(True)
         self._update_status()
 
@@ -711,12 +856,26 @@ class MainWindow(QMainWindow):
         self.game_mode_combo.setEnabled(self._session_active)
         self._status_label.setText("Match ended. Session still running.")
         logger.info("Match ended")
+        if self.worker is not None and self.worker.isRunning() and self._session_active:
+            self.worker.record_match_end()
         self._update_header_controls(True)
         self._update_status()
 
     def _on_game_event(self, event: object) -> None:
         etype = event.get("event_type", "event") if isinstance(event, dict) else "event"
         self._status_label.setText(f"Game event: {etype}")
+        if self.worker is not None and self.worker.isRunning() and self._session_active:
+            self.worker.record_game_event(event)
+
+    def _on_game_client_changed(self, connected: bool, phase: str) -> None:
+        """Update the LOL client indicator when the detector sees the client."""
+        self._client_connected = connected
+        self._client_phase = phase
+        self._update_status()
+        if connected:
+            self._status_label.setText(f"League client open: {phase}")
+        else:
+            self._status_label.setText("League client closed.")
 
     # ------------------------------------------------------------------
     # Header / status helpers
@@ -831,6 +990,30 @@ class MainWindow(QMainWindow):
         if self._in_match:
             self.pill_match.set_text("match: active")
             self.pill_match.set_active(True)
+            self.match_led.set_color(Colors.WARNING)
+            self.match_label.setText("GAME")
+            self.match_label.setProperty("role", "")
+            self.match_label.setStyleSheet(f"color: {Colors.WARNING}; font-weight: 700;")
+            self.match_status_layout.setEnabled(True)
         else:
             self.pill_match.set_text("match: —")
             self.pill_match.set_active(False)
+            self.match_led.set_color(Colors.TEXT_MUTED)
+            self.match_label.setText("GAME")
+            self.match_label.setProperty("role", "muted")
+            self.match_label.setStyleSheet("")
+            self.match_status_layout.setEnabled(False)
+
+        # League client open indicator (separate from match-in-progress).
+        if self._client_connected:
+            self.client_led.set_color(Colors.PRIMARY)
+            self.client_label.setText("LOL")
+            self.client_label.setProperty("role", "")
+            self.client_label.setStyleSheet(f"color: {Colors.PRIMARY}; font-weight: 700;")
+            self.client_status_layout.setEnabled(True)
+        else:
+            self.client_led.set_color(Colors.TEXT_MUTED)
+            self.client_label.setText("LOL")
+            self.client_label.setProperty("role", "muted")
+            self.client_label.setStyleSheet("")
+            self.client_status_layout.setEnabled(False)

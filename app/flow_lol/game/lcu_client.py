@@ -142,10 +142,14 @@ class LcuClient:
         self.event_poll_interval = event_poll_interval
 
         self._creds: Optional[LcuCredentials] = None
-        self._session: Optional[aiohttp.ClientSession] = None
+        self.__session: Optional[aiohttp.ClientSession] = None
         self._last_phase: str = "None"
         self._in_match = False
         self._current_mode: str = "Unknown"
+
+    def last_phase(self) -> str:
+        """Return the most recently polled gameflow phase."""
+        return self._last_phase
         self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
@@ -158,12 +162,12 @@ class LcuClient:
         if not await self._ensure_credentials():
             return False
         try:
-            async with self._session_lock() as session:
-                async with session.get(
-                    f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase",
-                    timeout=aiohttp.ClientTimeout(total=3.0),
-                ) as resp:
-                    return resp.status == 200
+            session = self._get_session()
+            async with session.get(
+                f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase",
+                timeout=aiohttp.ClientTimeout(total=3.0),
+            ) as resp:
+                return resp.status == 200
         except Exception as exc:
             logger.debug("LCU availability check failed: %s", exc)
             return False
@@ -181,18 +185,18 @@ class LcuClient:
         logger.info("LCU lockfile found: %s (port %s)", path, self._creds.port)
         return True
 
-    async def _session_lock(self):
-        """Return an aiohttp session, creating one lazily."""
-        if self._session is None or self._session.closed:
+    def _get_session(self) -> aiohttp.ClientSession:
+        """Return the LCU aiohttp session, creating it lazily."""
+        if self.__session is None or self.__session.closed:
             headers = {
                 "Authorization": self._creds.auth_header,
                 "Accept": "application/json",
             }
-            self._session = aiohttp.ClientSession(
+            self.__session = aiohttp.ClientSession(
                 headers=headers,
                 connector=aiohttp.TCPConnector(ssl=self._ssl_context),
             )
-        return self._session
+        return self.__session
 
     async def poll_once(self) -> bool:
         """Poll the LCU gameflow phase and emit start/end events.
@@ -206,9 +210,9 @@ class LcuClient:
         if phase is None:
             # Client may have closed; drop credentials and let the detector retry.
             self._creds = None
-            if self._session is not None and not self._session.closed:
-                await self._session.close()
-                self._session = None
+            if self.__session is not None and not self.__session.closed:
+                await self.__session.close()
+                self.__session = None
             return False
 
         self._last_phase = phase
@@ -238,14 +242,14 @@ class LcuClient:
         if self.on_game_event is None:
             return
         try:
-            async with self._event_session_lock() as session:
-                async with session.get(
-                    "https://127.0.0.1:2999/liveclientdata/eventdata",
-                    timeout=aiohttp.ClientTimeout(total=2.0),
-                ) as resp:
-                    if resp.status != 200:
-                        return
-                    data = await resp.json()
+            session = self._get_event_session()
+            async with session.get(
+                "https://127.0.0.1:2999/liveclientdata/eventdata",
+                timeout=aiohttp.ClientTimeout(total=2.0),
+            ) as resp:
+                if resp.status != 200:
+                    return
+                data = await resp.json()
         except Exception as exc:
             logger.debug("Live Client eventdata request failed: %s", exc)
             return
@@ -261,7 +265,7 @@ class LcuClient:
                 logger.debug("Live Client event: %s", parsed)
                 self.on_game_event(parsed)
 
-    async def _event_session_lock(self):
+    def _get_event_session(self) -> aiohttp.ClientSession:
         """Return an unauthenticated session for the Live Client Data API."""
         if self._event_session is None or self._event_session.closed:
             self._event_session = aiohttp.ClientSession(
@@ -314,18 +318,18 @@ class LcuClient:
     async def _get_phase(self) -> Optional[str]:
         """Return the current gameflow phase string, or None on failure."""
         try:
-            async with self._session_lock() as session:
-                async with session.get(
-                    f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase",
-                    timeout=aiohttp.ClientTimeout(total=3.0),
-                ) as resp:
-                    if resp.status != 200:
-                        return None
-                    # Response is a JSON string like "\"InProgress\"".
-                    data = await resp.json()
-                    if isinstance(data, str):
-                        return data
-                    return data.get("phase") if isinstance(data, dict) else None
+            session = self._get_session()
+            async with session.get(
+                f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase",
+                timeout=aiohttp.ClientTimeout(total=3.0),
+            ) as resp:
+                if resp.status != 200:
+                    return None
+                # Response is a JSON string like "\"InProgress\"".
+                data = await resp.json()
+                if isinstance(data, str):
+                    return data
+                return data.get("phase") if isinstance(data, dict) else None
         except Exception as exc:
             logger.debug("LCU phase request failed: %s", exc)
             return None
@@ -333,17 +337,17 @@ class LcuClient:
     async def _resolve_game_mode(self) -> str:
         """Ask the LCU session endpoint for the queue ID and map it to a mode."""
         try:
-            async with self._session_lock() as session:
-                async with session.get(
-                    f"{self._creds.base_url}/lol-gameflow/v1/session",
-                    timeout=aiohttp.ClientTimeout(total=3.0),
-                ) as resp:
-                    if resp.status != 200:
-                        return "Unknown"
-                    session_data = await resp.json()
-                    queue_id = self._extract_queue_id(session_data)
-                    if queue_id is not None:
-                        return QUEUE_ID_TO_MODE.get(queue_id, f"Queue {queue_id}")
+            session = self._get_session()
+            async with session.get(
+                f"{self._creds.base_url}/lol-gameflow/v1/session",
+                timeout=aiohttp.ClientTimeout(total=3.0),
+            ) as resp:
+                if resp.status != 200:
+                    return "Unknown"
+                session_data = await resp.json()
+                queue_id = self._extract_queue_id(session_data)
+                if queue_id is not None:
+                    return QUEUE_ID_TO_MODE.get(queue_id, f"Queue {queue_id}")
         except Exception as exc:
             logger.warning("Could not resolve LCU game mode: %s", exc)
         return "Unknown"
@@ -360,9 +364,9 @@ class LcuClient:
 
     async def close(self) -> None:
         """Close the underlying aiohttp session."""
-        if self._session is not None and not self._session.closed:
-            await self._session.close()
-            self._session = None
+        if self.__session is not None and not self.__session.closed:
+            await self.__session.close()
+            self.__session = None
         if self._event_session is not None and not self._event_session.closed:
             await self._event_session.close()
             self._event_session = None
@@ -371,3 +375,4 @@ class LcuClient:
     def reset_event_tracking(self) -> None:
         """Clear seen event IDs, e.g. at the start of a new match."""
         self._seen_event_ids.clear()
+

@@ -37,12 +37,14 @@ class GameDetector:
         on_match_start: Optional[Callable[[str, bool], None]] = None,
         on_match_end: Optional[Callable[[], None]] = None,
         on_game_event: Optional[Callable[[dict], None]] = None,
+        on_client_state_change: Optional[Callable[[bool, str], None]] = None,
         poll_interval: float = 2.0,
     ) -> None:
         self.settings = settings
         self.on_match_start = on_match_start
         self.on_match_end = on_match_end
         self.on_game_event = on_game_event
+        self.on_client_state_change = on_client_state_change
         self.poll_interval = poll_interval
 
         self._in_match = False
@@ -51,6 +53,9 @@ class GameDetector:
         self._stop_event = asyncio.Event()
         self._current_game_mode: Optional[str] = None
         self._current_detected = False
+
+        self._client_connected = False
+        self._client_phase = "None"
 
         self._lcu = LcuClient(
             on_match_start=self._on_lcu_match_start,
@@ -129,17 +134,22 @@ class GameDetector:
                     lcu_available = await self._lcu.is_available()
                     if lcu_available:
                         logger.info("LCU API available; using local League Client for match detection")
+                        self._set_client_state(True, "Lobby")
                     else:
                         logger.debug("LCU not available; using process detection fallback")
+                        self._set_client_state(False, "None")
 
                 if lcu_available:
                     still_available = await self._lcu.poll_once()
                     if not still_available:
                         logger.warning("LCU client lost; switching to process detection")
                         lcu_available = False
-                    elif self._in_match:
-                        # While the match is in progress, poll live game events too.
-                        await self._lcu.poll_events_once()
+                        self._set_client_state(False, "None")
+                    else:
+                        self._set_client_state(True, self._lcu.last_phase())
+                        if self._in_match:
+                            # While the match is in progress, poll live game events too.
+                            await self._lcu.poll_events_once()
                 else:
                     await self._detect_by_process()
 
@@ -151,6 +161,7 @@ class GameDetector:
     async def _detect_by_process(self) -> None:
         """Detect match start/end via running LoL executables."""
         running = await self._detect_lol_processes()
+        self._set_client_state(running, "process" if running else "None")
         if running and not self._in_match:
             await self.start_match("auto-detected", detected=True)
         elif not running and self._in_match and self._current_detected:
@@ -200,3 +211,15 @@ class GameDetector:
     def _on_lcu_match_end(self) -> None:
         """Forward LCU end event to the worker callback."""
         asyncio.create_task(self.end_match())
+
+    def _set_client_state(self, connected: bool, phase: str) -> None:
+        """Notify UI when the League client becomes reachable or changes phase."""
+        if connected == self._client_connected and phase == self._client_phase:
+            return
+        self._client_connected = connected
+        self._client_phase = phase
+        if self.on_client_state_change:
+            try:
+                self.on_client_state_change(connected, phase)
+            except Exception:
+                logger.exception("on_client_state_change callback failed")

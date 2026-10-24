@@ -32,7 +32,6 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from flow_lol.analysis.match_summary import summarize_match
 from flow_lol.config.settings import AppSettings
-from flow_lol.game.detector import GameDetector
 from flow_lol.game.replay_scanner import scan_replays_for_session
 from flow_lol.inference.pipeline import InferencePipeline, Prediction
 from flow_lol.persistence.ecg_writer import RawECGWriter
@@ -64,7 +63,6 @@ class SensorWorker(QThread):
         self.settings = settings
         self.manager: Optional[SensorManager] = None
         self.inference: Optional[InferencePipeline] = None
-        self.detector: Optional[GameDetector] = None
         self.repository: Optional[SessionRepository] = None
         self.webcam: Optional[WebcamRecorder] = None
         self.ecg_writer: Optional[RawECGWriter] = None
@@ -94,15 +92,6 @@ class SensorWorker(QThread):
         self.inference.load_models()
         if not self.inference.is_ready():
             logger.warning("Models are not ready; predictions will be skipped")
-
-        # Game detector runs continuously so auto-detect works during preview and session.
-        self.detector = GameDetector(
-            settings=self.settings,
-            on_match_start=self._on_match_start,
-            on_match_end=self._on_match_end,
-            on_game_event=self._on_game_event,
-        )
-        await self.detector.start()
 
         self.manager = SensorManager(
             settings=self.settings,
@@ -148,8 +137,6 @@ class SensorWorker(QThread):
         finally:
             await self._end_session()
             await self.manager.stop()
-            if self.detector is not None:
-                await self.detector.stop()
 
     # ------------------------------------------------------------------
     # Preview / session transitions
@@ -233,10 +220,7 @@ class SensorWorker(QThread):
             return
         try:
             if self._active_match_id is not None:
-                try:
-                    await self.detector.end_match()
-                except Exception:
-                    pass
+                await self._do_end_match()
             if self.webcam is not None:
                 self.webcam.stop()
                 self.webcam = None
@@ -255,6 +239,83 @@ class SensorWorker(QThread):
             self._active_match_started_at = None
             self._match_predictions.clear()
             self.session_state_changed.emit(False)
+
+    def record_match_start(self, game_mode: str, detected: bool = False) -> None:
+        """Record a match start in the database from an external detector."""
+        if self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._do_start_match(game_mode, detected),
+            self._loop,
+        )
+
+    async def _do_start_match(self, game_mode: str, detected: bool) -> None:
+        if self.repository is None or self.session_id is None:
+            return
+        if self._active_match_id is not None:
+            return
+        self._active_match_id = self.repository.start_match(
+            self.session_id, game_mode, detected=detected
+        )
+        self._active_match_started_at = time.time()
+        self._match_predictions.clear()
+        self.match_started.emit(game_mode, detected)
+        logger.info("External match start recorded: %s (id=%s)", game_mode, self._active_match_id)
+
+    def record_match_end(self) -> None:
+        """Record a match end in the database from an external detector."""
+        if self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._do_end_match(),
+            self._loop,
+        )
+
+    async def _do_end_match(self) -> None:
+        if self.repository is None or self._active_match_id is None:
+            return
+        match_id = self._active_match_id
+        self.repository.end_match(match_id)
+        events = (
+            self.repository.get_game_events(self.session_id or 0, match_id=match_id)
+            if self.session_id is not None
+            else []
+        )
+        rec = summarize_match(self._match_predictions, events)
+        self.repository.update_match_notes(match_id, rec.to_text())
+        self._scan_replays(match_id)
+        self._active_match_id = None
+        self._active_match_started_at = None
+        self._match_predictions.clear()
+        self.match_ended.emit()
+        logger.info("External match end recorded: id=%s", match_id)
+
+    def record_game_event(self, event: dict) -> None:
+        """Record a live game event from an external detector."""
+        if self._loop is None or self._loop.is_closed():
+            return
+        asyncio.run_coroutine_threadsafe(
+            self._do_record_game_event(event),
+            self._loop,
+        )
+
+    async def _do_record_game_event(self, event: dict) -> None:
+        if self.repository is None or self.session_id is None or self._active_match_id is None:
+            return
+        raw = event.get("raw", {})
+        event_time = float(event["timestamp"])
+        absolute_ts = (self._active_match_started_at or time.time()) + event_time
+        self.repository.add_game_event(
+            session_id=self.session_id,
+            match_id=self._active_match_id,
+            timestamp=absolute_ts,
+            event_type=event["event_type"],
+            actor=event.get("actor"),
+            target=event.get("target"),
+            description=event.get("description"),
+            source_json=json.dumps(raw, default=str, ensure_ascii=False),
+        )
+        self.game_event.emit(event)
 
     # ------------------------------------------------------------------
     # Signal handlers
@@ -286,100 +347,6 @@ class SensorWorker(QThread):
             self.ecg_writer.add_samples(name, samples)
         self.samples.emit(name, samples)
 
-    def _on_match_start(self, game_mode: str, detected: bool) -> None:
-        if self.repository is not None and self.session_id is not None:
-            self._active_match_id = self.repository.start_match(
-                self.session_id, game_mode, detected=detected
-            )
-            self._active_match_started_at = time.time()
-        self._match_predictions.clear()
-        self.match_started.emit(game_mode, detected)
-
-    def _on_match_end(self) -> None:
-        if self.repository is not None and self._active_match_id is not None:
-            self.repository.end_match(self._active_match_id)
-            events = (
-                self.repository.get_game_events(
-                    self.session_id or 0, match_id=self._active_match_id
-                )
-                if self.session_id is not None
-                else []
-            )
-            rec = summarize_match(self._match_predictions, events)
-            self.repository.update_match_notes(self._active_match_id, rec.to_text())
-            self._scan_replays(self._active_match_id)
-        self._active_match_id = None
-        self._active_match_started_at = None
-        self._match_predictions.clear()
-        self.match_ended.emit()
-
-    def _on_game_event(self, event: dict) -> None:
-        if self.repository is None or self.session_id is None or self._active_match_id is None:
-            return
-        raw = event.get("raw", {})
-        event_time = float(event["timestamp"])
-        absolute_ts = (self._active_match_started_at or time.time()) + event_time
-        self.repository.add_game_event(
-            session_id=self.session_id,
-            match_id=self._active_match_id,
-            timestamp=absolute_ts,
-            event_type=event["event_type"],
-            actor=event.get("actor"),
-            target=event.get("target"),
-            description=event.get("description"),
-            source_json=json.dumps(raw, default=str, ensure_ascii=False),
-        )
-        self.game_event.emit(event)
-
-    def _scan_replays(self, match_id: int) -> None:
-        if self.repository is None or self.session_id is None:
-            return
-        replays = scan_replays_for_session(
-            replay_dir=self.settings.replay_save_path,
-            session_id=self.session_id,
-            match_id=match_id,
-            repository=self.repository,
-        )
-        if replays:
-            logger.info("Linked %s replay(s) to match %s", len(replays), match_id)
-
-    # ------------------------------------------------------------------
-    # Thread-safe actions requested by the UI
-    # ------------------------------------------------------------------
-
-    def start_match(self, game_mode: str) -> None:
-        if self._loop is None or self._loop.is_closed():
-            logger.warning("Cannot start match: worker loop not available")
-            return
-        future = asyncio.run_coroutine_threadsafe(self._start_match(game_mode), self._loop)
-        future.add_done_callback(self._log_match_future)
-
-    def _log_match_future(self, future) -> None:
-        try:
-            future.result()
-        except Exception:
-            logger.exception("Match future failed")
-
-    async def _start_match(self, game_mode: str) -> None:
-        if self.detector is None:
-            logger.warning("Cannot start match: detector is None")
-            return
-        logger.info("Worker starting match: %s", game_mode)
-        await self.detector.start_match(game_mode, detected=False)
-
-    def end_match(self) -> None:
-        if self._loop is None or self._loop.is_closed():
-            logger.warning("Cannot end match: worker loop not available")
-            return
-        future = asyncio.run_coroutine_threadsafe(self._end_match(), self._loop)
-        future.add_done_callback(self._log_match_future)
-
-    async def _end_match(self) -> None:
-        if self.detector is None:
-            logger.warning("Cannot end match: detector is None")
-            return
-        logger.info("Worker ending match")
-        await self.detector.end_match()
 
     def toggle_webcam(self) -> None:
         if self._loop is None or self._loop.is_closed():
