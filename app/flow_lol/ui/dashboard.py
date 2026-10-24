@@ -4,48 +4,77 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import os
 
-from PyQt6.QtCore import QPoint, Qt
-from PyQt6.QtGui import QColor, QPainter, QPen, QPolygon
+from PyQt6.QtCore import QPoint, Qt, QUrl, pyqtSignal
+from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPolygon
+from PyQt6.QtMultimedia import QMediaPlayer
+from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
     QComboBox,
+    QDialog,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
+    QSlider,
     QSplitter,
     QVBoxLayout,
     QWidget,
 )
 
-from flow_lol.ui.components import CardWidget, CompactActionBar
+from flow_lol.ui.components import CardWidget, CompactActionBar, Switch
 from flow_lol.ui.styles import Colors, Spacing
 from flow_lol.persistence.repository import SessionRepository
+from flow_lol.utils.paths import default_data_dir
 
 logger = logging.getLogger(__name__)
 
 
 class FlowTimelineWidget(QWidget):
-    """Painter-based timeline of flow (green) vs no-flow (grey) windows."""
+    """Painter-based timeline/graph of flow (green) vs no-flow (grey) windows."""
 
-    BAR_WIDTH = 5
+    BAR_WIDTH = 12
     PADDING_LEFT = 50
     PADDING_RIGHT = 16
     PADDING_TOP = 24
     PADDING_BOTTOM = 36
+
+    prediction_clicked = pyqtSignal(object)
+    selection_changed = pyqtSignal(object)
+
+    MODE_TIMELINE = "timeline"
+    MODE_BLOCKS = "blocks"
+    MODE_LINE = "line"
+    MODE_SCATTER = "scatter"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.predictions: List[Dict[str, Any]] = []
         self.matches: List[Dict[str, Any]] = []
         self.game_events: List[Dict[str, Any]] = []
-        self.setMinimumHeight(180)
+        self.mode: str = self.MODE_TIMELINE
+        self._alternate_shading = False
+        self._selected_prediction: Optional[Dict[str, Any]] = None
+        self._t_min = 0.0
+        self._t_max = 1.0
+        self._mouse_x: Optional[int] = None
+        self._hover_pred: Optional[Dict[str, Any]] = None
+        self.setMinimumHeight(200)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def set_mode(self, mode: str) -> None:
+        self.mode = mode if mode in (self.MODE_TIMELINE, self.MODE_BLOCKS, self.MODE_LINE, self.MODE_SCATTER) else self.MODE_TIMELINE
+        self.update()
 
     def set_data(
         self,
@@ -56,6 +85,20 @@ class FlowTimelineWidget(QWidget):
         self.predictions = predictions
         self.matches = matches or []
         self.game_events = game_events or []
+        self._selected_prediction = None
+        self.update()
+
+    def set_alternate_shading(self, enabled: bool) -> None:
+        self._alternate_shading = enabled
+        self.update()
+
+    def selected_prediction(self) -> Optional[Dict[str, Any]]:
+        return self._selected_prediction
+
+    def set_selected_prediction(self, prediction: Optional[Dict[str, Any]]) -> None:
+        self._selected_prediction = prediction
+        if prediction is not None:
+            self.selection_changed.emit(prediction)
         self.update()
 
     def paintEvent(self, event: object) -> None:
@@ -65,14 +108,35 @@ class FlowTimelineWidget(QWidget):
         finally:
             painter.end()
 
-    def _draw(self, painter: QPainter) -> None:
+    def _geometry(self) -> tuple:
         width = self.width()
         height = self.height()
+        plot_w = width - self.PADDING_LEFT - self.PADDING_RIGHT
+        plot_h = height - self.PADDING_TOP - self.PADDING_BOTTOM
+        return width, height, plot_w, plot_h
+
+    def _time_range(self) -> tuple[float, float]:
+        if not self.predictions:
+            return 0.0, 1.0
+        times = [p["timestamp"] for p in self.predictions]
+        t_min, t_max = min(times), max(times)
+        if t_max == t_min:
+            t_max = t_min + 1.0
+        return t_min, t_max
+
+    def _x(self, t: float, t_min: float, t_max: float, plot_w: float) -> float:
+        return self.PADDING_LEFT + (t - t_min) / (t_max - t_min) * plot_w
+
+    def _t_from_x(self, x: float, t_min: float, t_max: float, plot_w: float) -> float:
+        return t_min + (x - self.PADDING_LEFT) / max(1, plot_w) * (t_max - t_min)
+
+    def _draw(self, painter: QPainter) -> None:
+        width, height, plot_w, plot_h = self._geometry()
         if width <= 0 or height <= 0:
             return
 
-        plot_w = width - self.PADDING_LEFT - self.PADDING_RIGHT
-        plot_h = height - self.PADDING_TOP - self.PADDING_BOTTOM
+        t_min, t_max = self._time_range()
+        self._t_min, self._t_max = t_min, t_max
 
         # Background
         painter.fillRect(0, 0, width, height, QColor(Colors.SURFACE))
@@ -92,22 +156,34 @@ class FlowTimelineWidget(QWidget):
             )
             return
 
-        times = [p["timestamp"] for p in self.predictions]
-        t_min, t_max = min(times), max(times)
-        if t_max == t_min:
-            t_max = t_min + 1.0
+        if self.mode == self.MODE_TIMELINE:
+            self._draw_timeline(painter, plot_w, plot_h, t_min, t_max)
+        elif self.mode == self.MODE_BLOCKS:
+            self._draw_blocks(painter, plot_w, plot_h, t_min, t_max)
+        elif self.mode == self.MODE_LINE:
+            self._draw_line(painter, plot_w, plot_h, t_min, t_max)
+        elif self.mode == self.MODE_SCATTER:
+            self._draw_scatter(painter, plot_w, plot_h, t_min, t_max)
 
-        def _x(t: float) -> float:
-            return self.PADDING_LEFT + (t - t_min) / (t_max - t_min) * plot_w
+        self._draw_axis_and_events(painter, plot_w, plot_h, t_min, t_max)
+        self._draw_selection(painter, plot_w, plot_h, t_min, t_max)
+        self._draw_hover_indicator(painter, plot_w, plot_h, t_min, t_max)
 
-        # Match background regions
+    def _draw_match_regions(
+        self,
+        painter: QPainter,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+        plot_w: float,
+    ) -> None:
         for match in self.matches:
             start = match.get("started_at")
             end = match.get("ended_at") or t_max
             if start is None:
                 continue
-            x1 = _x(start)
-            x2 = _x(end)
+            x1 = self._x(start, t_min, t_max, plot_w)
+            x2 = self._x(end, t_min, t_max, plot_w)
             painter.fillRect(
                 int(x1),
                 self.PADDING_TOP,
@@ -116,39 +192,145 @@ class FlowTimelineWidget(QWidget):
                 QColor(Colors.MATCH_REGION),
             )
             painter.setPen(QPen(QColor(180, 210, 230), 1))
-            painter.drawLine(int(x1), self.PADDING_TOP, int(x1), self.PADDING_TOP + plot_h)
-            painter.drawLine(int(x2), self.PADDING_TOP, int(x2), self.PADDING_TOP + plot_h)
+            painter.drawLine(int(x1), self.PADDING_TOP, int(x1), self.PADDING_TOP + int(plot_h))
+            painter.drawLine(int(x2), self.PADDING_TOP, int(x2), self.PADDING_TOP + int(plot_h))
 
-        # Prediction bars
-        for pred in self.predictions:
-            x = _x(pred["timestamp"])
+    def _draw_timeline(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
+        sorted_preds = sorted(enumerate(self.predictions), key=lambda item: item[1]["timestamp"])
+        for idx, pred in sorted_preds:
+            x = self._x(pred["timestamp"], t_min, t_max, plot_w)
             label = pred.get("ensemble_label", 0)
-            color = QColor(Colors.FLOW) if label == 1 else QColor(Colors.NO_FLOW)
+            color = self._prediction_color(label, idx)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(color)
             painter.drawRect(
                 int(x - self.BAR_WIDTH / 2),
                 self.PADDING_TOP,
                 self.BAR_WIDTH,
-                plot_h,
+                int(plot_h),
             )
 
-        # Game event markers (triangles)
+    def _prediction_color(self, label: int, index: int) -> QColor:
+        """Return the bar/block color, optionally alternating each window."""
+        base = QColor(Colors.FLOW) if label == 1 else QColor(Colors.NO_FLOW)
+        if not self._alternate_shading:
+            return base
+        if index % 2 == 1:
+            if label == 1:
+                return base.darker(110)
+            return base.darker(115)
+        return base
+
+    def _draw_blocks(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        """Merge consecutive same-label predictions into wide coloured blocks."""
+        self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
+        if not self.predictions:
+            return
+        sorted_preds = sorted(self.predictions, key=lambda p: p["timestamp"])
+        runs: list[tuple[float, float, int]] = []
+        run_start_ts = sorted_preds[0]["timestamp"]
+        run_label = sorted_preds[0].get("ensemble_label", 0)
+        for pred in sorted_preds[1:]:
+            label = pred.get("ensemble_label", 0)
+            if label != run_label:
+                runs.append((run_start_ts, pred["timestamp"], run_label))
+                run_start_ts = pred["timestamp"]
+                run_label = label
+        runs.append((run_start_ts, sorted_preds[-1]["timestamp"], run_label))
+
+        for run_idx, (start_ts, end_ts, label) in enumerate(runs):
+            x1 = self._x(start_ts, t_min, t_max, plot_w)
+            x2 = self._x(end_ts, t_min, t_max, plot_w)
+            color = self._prediction_color(label, run_idx)
+            # Add a subtle border so adjacent blocks are distinguishable.
+            painter.setPen(QPen(QColor(Colors.TEXT_MUTED), 1))
+            painter.setBrush(color)
+            rect_x = int(x1)
+            rect_w = max(self.BAR_WIDTH, int(x2 - x1))
+            painter.drawRect(rect_x, self.PADDING_TOP, rect_w, int(plot_h))
+
+    def _draw_line(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
+        sorted_preds = sorted(self.predictions, key=lambda p: p["timestamp"])
+        pen = QPen(QColor(Colors.TEXT), 2)
+        painter.setPen(pen)
+        prev_x: Optional[float] = None
+        prev_y: Optional[float] = None
+        for pred in sorted_preds:
+            x = self._x(pred["timestamp"], t_min, t_max, plot_w)
+            label = pred.get("ensemble_label", 0)
+            y = self.PADDING_TOP + (0 if label == 1 else int(plot_h))
+            color = QColor(Colors.FLOW) if label == 1 else QColor(Colors.NO_FLOW)
+            painter.setBrush(color)
+            painter.drawEllipse(int(x - 4), int(y - 4), 8, 8)
+            if prev_x is not None and prev_y is not None:
+                painter.drawLine(int(prev_x), int(prev_y), int(x), int(y))
+            prev_x, prev_y = x, y
+
+    def _draw_scatter(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
+        for pred in self.predictions:
+            x = self._x(pred["timestamp"], t_min, t_max, plot_w)
+            label = pred.get("ensemble_label", 0)
+            y = self.PADDING_TOP + (0.2 * plot_h if label == 1 else 0.8 * plot_h)
+            color = QColor(Colors.FLOW) if label == 1 else QColor(Colors.NO_FLOW)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            painter.drawEllipse(int(x - 5), int(y - 5), 10, 10)
+
+    def _draw_axis_and_events(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        # Game event markers (triangles above the axis)
         event_colors = {
             "kill": QColor(Colors.SUCCESS),
             "death": QColor(Colors.DANGER),
             "objective": QColor(Colors.PRIMARY),
         }
         painter.setPen(Qt.PenStyle.NoPen)
+        y_axis = self.PADDING_TOP + int(plot_h)
         for event in self.game_events:
             t = event.get("timestamp")
             if t is None:
                 continue
-            x = _x(t)
+            x = self._x(t, t_min, t_max, plot_w)
             etype = event.get("event_type", "")
             color = event_colors.get(etype, QColor(Colors.WARNING))
             painter.setBrush(color)
-            # Draw a small upward triangle above the axis.
             polygon = QPolygon([
                 QPoint(int(x), y_axis - 8),
                 QPoint(int(x - 5), y_axis - 1),
@@ -158,30 +340,139 @@ class FlowTimelineWidget(QWidget):
 
         # Axis line
         painter.setPen(QPen(QColor(Colors.TEXT_MUTED), 1))
-        y_axis = self.PADDING_TOP + plot_h
-        painter.drawLine(self.PADDING_LEFT, y_axis, width - self.PADDING_RIGHT, y_axis)
+        painter.drawLine(self.PADDING_LEFT, y_axis, self.width() - self.PADDING_RIGHT, y_axis)
 
         # Time labels
         painter.setPen(QColor(Colors.TEXT_SECONDARY))
         for label_t in [t_min, (t_min + t_max) / 2, t_max]:
             txt = datetime.fromtimestamp(label_t).strftime("%H:%M:%S")
-            x = _x(label_t)
+            x = self._x(label_t, t_min, t_max, plot_w)
             painter.drawText(int(x - 30), y_axis + 20, 60, 20, Qt.AlignmentFlag.AlignCenter, txt)
+
+    def _prediction_at_x(self, x: float) -> tuple[Optional[Dict[str, Any]], float]:
+        """Return the prediction nearest to the given mouse x and the time there."""
+        width, _, plot_w, _ = self._geometry()
+        if not self.predictions or plot_w <= 0 or x < self.PADDING_LEFT or x > width - self.PADDING_RIGHT:
+            return None, 0.0
+        t_min, t_max = self._time_range()
+        t = self._t_from_x(x, t_min, t_max, plot_w)
+        nearest = min(self.predictions, key=lambda p: abs(p["timestamp"] - t))
+        # Accept clicks/hovers within ~1.5 average inter-prediction gaps.
+        threshold = max(15.0, (t_max - t_min) / max(1, len(self.predictions)) * 1.5)
+        if abs(nearest["timestamp"] - t) <= threshold:
+            return nearest, t
+        return None, t
+
+    def mouseMoveEvent(self, event) -> None:
+        x = int(event.position().x())
+        self._mouse_x = x
+        pred, t = self._prediction_at_x(x)
+        self._hover_pred = pred
+        if pred is not None:
+            ts = pred["timestamp"]
+            label = "flow" if pred.get("ensemble_label", 0) == 1 else "no-flow"
+            votes = pred.get("n_for_majority", 0)
+            total = pred.get("n_votes", 0)
+            self.setToolTip(
+                f"{datetime.fromtimestamp(ts).strftime('%H:%M:%S')} – {label.upper()}\n"
+                f"Votes: {votes}/{total} | click to inspect"
+            )
+            self.setCursor(Qt.CursorShape.PointingHandCursor)
+        else:
+            self.setToolTip("")
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        self.update()
+
+    def leaveEvent(self, event) -> None:
+        self._mouse_x = None
+        self._hover_pred = None
+        self.setToolTip("")
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.update()
+
+    def _draw_hover_indicator(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        if self._mouse_x is None:
+            return
+        width, _, _, _ = self._geometry()
+        if self._mouse_x < self.PADDING_LEFT or self._mouse_x > width - self.PADDING_RIGHT:
+            return
+        # Vertical time indicator line.
+        painter.setPen(QPen(QColor(Colors.TEXT_SECONDARY), 1, Qt.PenStyle.DashLine))
+        painter.drawLine(self._mouse_x, self.PADDING_TOP, self._mouse_x, self.PADDING_TOP + int(plot_h))
+        # If the cursor is over a prediction, draw a small highlight outline.
+        if self._hover_pred is not None:
+            x = self._x(self._hover_pred["timestamp"], t_min, t_max, plot_w)
+            label = self._hover_pred.get("ensemble_label", 0)
+            color = QColor(Colors.TEXT if label == 1 else Colors.TEXT)
+            painter.setPen(QPen(color, 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            half = self.BAR_WIDTH // 2 + 4
+            painter.drawRect(int(x - half), self.PADDING_TOP - 4, half * 2, int(plot_h) + 8)
+
+    def _draw_selection(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        if self._selected_prediction is None:
+            return
+        x = self._x(self._selected_prediction["timestamp"], t_min, t_max, plot_w)
+        label = self._selected_prediction.get("ensemble_label", 0)
+        color = QColor(Colors.PRIMARY) if label == 1 else QColor(Colors.TEXT)
+        # Solid vertical line for the selected window.
+        painter.setPen(QPen(color, 2))
+        painter.drawLine(int(x), self.PADDING_TOP, int(x), self.PADDING_TOP + int(plot_h))
+        # Label at the top of the line.
+        ts = self._selected_prediction["timestamp"]
+        txt = datetime.fromtimestamp(ts).strftime("%H:%M:%S")
+        painter.setPen(QColor(Colors.TEXT))
+        text_y = max(2, self.PADDING_TOP - 18)
+        painter.drawText(int(x) + 4, text_y, 120, 16, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, txt)
+
+    def mousePressEvent(self, event) -> None:
+        pred, _ = self._prediction_at_x(event.position().x())
+        if pred is not None:
+            self.set_selected_prediction(pred)
+            self.prediction_clicked.emit(pred)
 
 
 class DashboardWidget(QWidget):
     """Post-game dashboard for reviewing sessions, matches, and flow predictions."""
 
-    def __init__(self, parent: QWidget | None = None) -> None:
+    session_changed = pyqtSignal(object)
+
+    def __init__(
+        self,
+        webcam_dir: Optional[Path] = None,
+        parent: QWidget | None = None,
+    ) -> None:
         super().__init__(parent)
         self.repo = SessionRepository()
+        self.webcam_dir = Path(webcam_dir) if webcam_dir else default_data_dir() / "webcam"
         self._sessions: List[Dict[str, Any]] = []
         self._match_rows: List[Dict[str, Any]] = []
         self._replay_rows: List[Dict[str, Any]] = []
         self._current_session_id: Optional[int] = None
+        self._current_predictions: List[Dict[str, Any]] = []
+        self._sorted_predictions: List[Dict[str, Any]] = []
+        self._selected_index: int = -1
 
         self._build_ui()
         self.refresh_sessions()
+
+    def current_session_id(self) -> Optional[int]:
+        """Return the id of the session currently shown in the dashboard."""
+        return self._current_session_id
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
@@ -223,12 +514,55 @@ class DashboardWidget(QWidget):
         header_layout.addLayout(top_row)
         layout.addWidget(header_card)
 
+        # View-mode selector
+        view_row = QHBoxLayout()
+        view_row.setSpacing(Spacing.MD)
+        view_row.addWidget(QLabel("View mode:"))
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Timeline (bars)", FlowTimelineWidget.MODE_TIMELINE)
+        self.view_combo.addItem("Blocks", FlowTimelineWidget.MODE_BLOCKS)
+        self.view_combo.addItem("Line graph", FlowTimelineWidget.MODE_LINE)
+        self.view_combo.addItem("Scatter", FlowTimelineWidget.MODE_SCATTER)
+        self.view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
+        view_row.addWidget(self.view_combo)
+        view_row.addStretch()
+        view_row.addWidget(QLabel("Alternate shading:"))
+        self.alternate_switch = Switch()
+        self.alternate_switch.setToolTip("Shade every other window so boundaries are easier to see")
+        self.alternate_switch.toggled.connect(self._on_alternate_toggled)
+        view_row.addWidget(self.alternate_switch)
+        layout.addLayout(view_row)
+
+        # Navigation row under the timeline
+        nav_row = QHBoxLayout()
+        nav_row.setSpacing(Spacing.MD)
+        self.next_window_btn = QPushButton("⏭ Next window")
+        self.next_window_btn.setToolTip("Move the selection to the next prediction window")
+        self.next_window_btn.clicked.connect(self._on_next_window)
+        self.next_flow_btn = QPushButton("⏭ Next flow window")
+        self.next_flow_btn.setToolTip("Jump the selection to the next flow window")
+        self.next_flow_btn.clicked.connect(self._on_next_flow_window)
+        self.inspect_selected_btn = QPushButton("🔍 Inspect selected")
+        self.inspect_selected_btn.setToolTip("Open the selected window in the inspection popup")
+        self.inspect_selected_btn.clicked.connect(self._on_inspect_selected)
+        self.inspect_selected_btn.setEnabled(False)
+        nav_row.addWidget(self.next_window_btn)
+        nav_row.addWidget(self.next_flow_btn)
+        nav_row.addWidget(self.inspect_selected_btn)
+        self.selection_info = QLabel("Click a window or use Next / Next flow")
+        self.selection_info.setProperty("role", "muted")
+        nav_row.addWidget(self.selection_info)
+        nav_row.addStretch()
+        layout.addLayout(nav_row)
+
         # Content splitter
         splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Timeline card
         timeline_card = CardWidget("Flow timeline")
         self.timeline = FlowTimelineWidget()
+        self.timeline.prediction_clicked.connect(self._on_prediction_clicked)
+        self.timeline.selection_changed.connect(self._on_timeline_selection_changed)
         timeline_card.content_layout().addWidget(self.timeline)
         splitter.addWidget(timeline_card)
 
@@ -299,10 +633,13 @@ class DashboardWidget(QWidget):
             self.details_label.setProperty("role", "muted")
             self.match_list.clear()
             self.timeline.set_data([])
+            self._current_session_id = None
+            self.session_changed.emit(None)
             return
 
         session_id = session["id"]
         self._current_session_id = session_id
+        self.session_changed.emit(session_id)
         predictions = self.repo.get_predictions(session_id)
         matches = self.repo.get_matches(session_id)
         events = self.repo.get_sensor_events(session_id)
@@ -360,7 +697,13 @@ class DashboardWidget(QWidget):
         n_preds = len(predictions)
         n_flow = sum(1 for p in predictions if p.get("ensemble_label") == 1)
         flow_pct = (n_flow / n_preds * 100) if n_preds else 0
-        duration = "running" if session["ended_at"] is None else f"{session['ended_at'] - session['started_at']:.0f} s"
+        step_seconds = self._prediction_step_seconds(predictions)
+        flow_duration = n_flow * step_seconds
+        duration = (
+            "running"
+            if session["ended_at"] is None
+            else self._format_duration(session["ended_at"] - session["started_at"])
+        )
         sensor_summary = session.get("sensor_summary") or "unknown"
 
         self.details_label.setProperty("role", "")
@@ -369,12 +712,103 @@ class DashboardWidget(QWidget):
             f"Started: {datetime.fromtimestamp(session['started_at'])}<br>"
             f"Duration: {duration}<br>"
             f"Sensors: {sensor_summary}<br>"
-            f"Predictions: {n_preds}<br>"
-            f"Flow windows: {n_flow} ({flow_pct:.1f}%)<br>"
+            f"Predictions: {n_preds} windows<br>"
+            f"Flow windows: {n_flow} ({flow_pct:.1f}%, {self._format_duration(flow_duration)})<br>"
             f"Sensor events: {len(events)} | Game events: {len(game_events)} | Replays: {len(replays)}"
         )
 
+        self._current_predictions = predictions
+        self._sorted_predictions = sorted(predictions, key=lambda p: p["timestamp"])
+        self._selected_index = -1
         self.timeline.set_data(predictions, matches, game_events)
+        self._update_selection_ui()
+
+    @staticmethod
+    def _format_duration(seconds: float) -> str:
+        """Format seconds as Xm YYs."""
+        s = max(0, int(round(seconds)))
+        return f"{s // 60}m {s % 60:02d}s"
+
+    def _prediction_step_seconds(self, predictions: List[Dict[str, Any]]) -> float:
+        """Estimate the interval between consecutive prediction windows."""
+        if len(predictions) < 2:
+            return 30.0
+        times = sorted(p["timestamp"] for p in predictions)
+        diffs = [times[i + 1] - times[i] for i in range(len(times) - 1)]
+        median = sorted(diffs)[len(diffs) // 2]
+        return max(1.0, median)
+
+    def _on_view_mode_changed(self, index: int) -> None:
+        mode = self.view_combo.itemData(index)
+        if mode:
+            self.timeline.set_mode(str(mode))
+
+    def _on_prediction_clicked(self, prediction: Dict[str, Any]) -> None:
+        if self._current_session_id is None:
+            return
+        dialog = PredictionInspectDialog(
+            prediction=prediction,
+            session_id=self._current_session_id,
+            webcam_dir=self.webcam_dir,
+            parent=self,
+        )
+        dialog.exec()
+
+    def _on_timeline_selection_changed(self, prediction: Dict[str, Any]) -> None:
+        if not self._sorted_predictions:
+            return
+        for i, p in enumerate(self._sorted_predictions):
+            if p["timestamp"] == prediction["timestamp"]:
+                self._selected_index = i
+                break
+        self._update_selection_ui()
+
+    def _update_selection_ui(self) -> None:
+        has_selection = self._selected_index >= 0 and self._selected_index < len(self._sorted_predictions)
+        self.inspect_selected_btn.setEnabled(has_selection)
+        self.next_window_btn.setEnabled(bool(self._sorted_predictions))
+        self.next_flow_btn.setEnabled(any(p.get("ensemble_label") == 1 for p in self._sorted_predictions))
+        if has_selection:
+            pred = self._sorted_predictions[self._selected_index]
+            ts = pred["timestamp"]
+            label = "flow" if pred.get("ensemble_label", 0) == 1 else "no-flow"
+            self.selection_info.setText(
+                f"Selected {datetime.fromtimestamp(ts).strftime('%H:%M:%S')} ({label})"
+            )
+        else:
+            self.selection_info.setText("Click a window or use Next / Next flow")
+
+    def _on_next_window(self) -> None:
+        if not self._sorted_predictions:
+            return
+        if self._selected_index < 0:
+            self._selected_index = 0
+        else:
+            self._selected_index = (self._selected_index + 1) % len(self._sorted_predictions)
+        pred = self._sorted_predictions[self._selected_index]
+        self.timeline.set_selected_prediction(pred)
+        self._update_selection_ui()
+
+    def _on_next_flow_window(self) -> None:
+        if not self._sorted_predictions:
+            return
+        start = max(0, self._selected_index)
+        n = len(self._sorted_predictions)
+        for offset in range(1, n + 1):
+            idx = (start + offset) % n
+            if self._sorted_predictions[idx].get("ensemble_label") == 1:
+                self._selected_index = idx
+                pred = self._sorted_predictions[idx]
+                self.timeline.set_selected_prediction(pred)
+                self._update_selection_ui()
+                return
+
+    def _on_inspect_selected(self) -> None:
+        if 0 <= self._selected_index < len(self._sorted_predictions):
+            self._on_prediction_clicked(self._sorted_predictions[self._selected_index])
+
+    def _on_alternate_toggled(self, enabled: bool) -> None:
+        self.timeline.set_alternate_shading(enabled)
 
     def _on_match_selected(
         self,
@@ -478,3 +912,380 @@ class DashboardWidget(QWidget):
         n_deleted = self.repo.delete_all_sessions()
         logger.info("Cleared all sessions from database (%s deleted)", n_deleted)
         self.refresh_sessions()
+
+
+class PredictionInspectDialog(QDialog):
+    """Popup showing details for a single prediction with in-app video + snapshots."""
+
+    def __init__(
+        self,
+        prediction: Dict[str, Any],
+        session_id: int,
+        webcam_dir: Path,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.prediction = prediction
+        self.session_id = session_id
+        self.webcam_dir = webcam_dir
+        self._video_path: Optional[Path] = None
+        self._video_start_ts: Optional[float] = None
+        self._auto_seek_done = False
+
+        ts = prediction.get("timestamp", 0.0)
+        label = prediction.get("ensemble_label", 0)
+        label_text = "flow" if label == 1 else "no-flow"
+        n_votes = prediction.get("n_votes", 0)
+        n_for = prediction.get("n_for_majority", 0)
+
+        self.setWindowTitle(f"Prediction at {datetime.fromtimestamp(ts).strftime('%H:%M:%S')}")
+        self.setMinimumSize(720, 620)
+        self.resize(760, 640)
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(Spacing.MD)
+
+        summary = QLabel(
+            f"<b>Result:</b> {label_text.upper()}<br>"
+            f"<b>Votes:</b> {n_for}/{n_votes} models voted {label_text}<br>"
+            f"<b>Time:</b> {datetime.fromtimestamp(ts)}"
+        )
+        summary.setWordWrap(True)
+        layout.addWidget(summary)
+
+        votes_card = CardWidget("Per-model votes")
+        votes_layout = votes_card.content_layout()
+        votes_layout.setSpacing(0)
+        self.vote_list = QListWidget()
+        self.vote_list.setMaximumHeight(130)
+        votes = prediction.get("votes", {})
+        for name, vote in sorted(votes.items()):
+            icon = "✅" if vote == 1 else "❌"
+            item = QListWidgetItem(f"{icon}  {name}")
+            self.vote_list.addItem(item)
+        if not votes:
+            self.vote_list.addItem("No vote data available")
+        votes_layout.addWidget(self.vote_list)
+        layout.addWidget(votes_card)
+
+        # Inline media player -------------------------------------------------
+        media_card = CardWidget("Media preview")
+        media_layout = media_card.content_layout()
+
+        self.player = QMediaPlayer()
+        self.video_widget = QVideoWidget()
+        self.video_widget.setMinimumHeight(320)
+        self.video_widget.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.player.setVideoOutput(self.video_widget)
+
+        self.image_overlay = QLabel()
+        self.image_overlay.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.image_overlay.setStyleSheet("background-color: #000000;")
+        self.image_overlay.setMinimumHeight(320)
+        self.image_overlay.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        self.image_overlay.hide()
+
+        self.preview_stack = QWidget()
+        self.preview_stack.setMinimumHeight(340)
+        self.preview_stack.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Expanding,
+        )
+        preview_stack_layout = QVBoxLayout(self.preview_stack)
+        preview_stack_layout.setContentsMargins(0, 0, 0, 0)
+        preview_stack_layout.setSpacing(0)
+        preview_stack_layout.addWidget(self.video_widget, stretch=1)
+        preview_stack_layout.addWidget(self.image_overlay, stretch=1)
+        media_layout.addWidget(self.preview_stack, stretch=1)
+
+        self.player.positionChanged.connect(self._on_position_changed)
+        self.player.durationChanged.connect(self._on_duration_changed)
+        self.player.mediaStatusChanged.connect(self._on_media_status_changed)
+
+        self._seek_slider = QSlider(Qt.Orientation.Horizontal)
+        self._seek_slider.setRange(0, 0)
+        self._seek_slider.setEnabled(False)
+        self._seek_slider.sliderReleased.connect(self._on_seek_released)
+        self._time_label = QLabel("00:00 / 00:00")
+        self._time_label.setProperty("role", "muted")
+
+        controls = QHBoxLayout()
+        controls.setSpacing(Spacing.SM)
+        self.play_btn = QPushButton("▶")
+        self.play_btn.setProperty("role", "icon")
+        self.play_btn.setToolTip("Play / pause")
+        self.play_btn.clicked.connect(self._toggle_playback)
+        self.play_btn.setEnabled(False)
+        self.stop_btn = QPushButton("⏹")
+        self.stop_btn.setProperty("role", "icon")
+        self.stop_btn.setToolTip("Stop")
+        self.stop_btn.clicked.connect(self._stop)
+        self.stop_btn.setEnabled(False)
+        controls.addWidget(self.play_btn)
+        controls.addWidget(self.stop_btn)
+        controls.addWidget(self._seek_slider, stretch=1)
+        controls.addWidget(self._time_label)
+        media_layout.addLayout(controls)
+
+        media_buttons = QHBoxLayout()
+        media_buttons.setSpacing(Spacing.MD)
+        self.play_video_btn = QPushButton("▶ Play video at prediction")
+        self.play_video_btn.setToolTip("Load the session video and jump to the prediction time")
+        self.play_video_btn.clicked.connect(self._play_video_at_prediction)
+        media_buttons.addWidget(self.play_video_btn)
+        media_buttons.addStretch()
+        media_layout.addLayout(media_buttons)
+
+        self.media_info = QLabel("")
+        self.media_info.setProperty("role", "muted")
+        self.media_info.setWordWrap(True)
+        media_layout.addWidget(self.media_info)
+
+        layout.addWidget(media_card, stretch=1)
+
+        snapshots_card = CardWidget("Snapshots around prediction")
+        snaps_layout = snapshots_card.content_layout()
+        self.snap_list = QListWidget()
+        self.snap_list.setMaximumHeight(220)
+        self.snap_list.setAlternatingRowColors(True)
+        self.snap_list.itemClicked.connect(self._show_snapshot_image)
+        snaps_layout.addWidget(self.snap_list)
+        layout.addWidget(snapshots_card)
+        self._populate_snapshots(ts)
+
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(self.accept)
+        layout.addWidget(close_btn)
+
+        # Try to pre-load the session video and seek to the prediction time.
+        self._load_session_video()
+
+    # ------------------------------------------------------------------
+    # Helpers
+    # ------------------------------------------------------------------
+
+    def _session_video_path(self) -> Optional[Path]:
+        if not self.webcam_dir.exists():
+            return None
+        # New layout: session folder containing a video.
+        for folder in self.webcam_dir.iterdir():
+            if folder.is_dir() and folder.name.startswith(f"session_{self.session_id}_"):
+                videos = list(folder.glob("*.mp4"))
+                if videos:
+                    return videos[0]
+        # Old layout: top-level MP4 file matching the session id.
+        for path in self.webcam_dir.iterdir():
+            if (
+                path.is_file()
+                and path.suffix.lower() == ".mp4"
+                and path.name.startswith(f"session_{self.session_id}_")
+            ):
+                return path
+        return None
+
+    @staticmethod
+    def _video_start_timestamp(path: Path) -> Optional[float]:
+        """Parse session_<id>_YYYYMMDD_HHMMSS.mp4 filename or fall back to mtime."""
+        import re
+
+        match = re.match(r"session_\d+_(\d{8}_\d{6})\.mp4", path.name, re.IGNORECASE)
+        if match:
+            try:
+                dt = datetime.strptime(match.group(1), "%Y%m%d_%H%M%S")
+                return dt.timestamp()
+            except ValueError:
+                pass
+        try:
+            return path.stat().st_mtime
+        except Exception:
+            return None
+
+    def _load_session_video(self) -> None:
+        video = self._session_video_path()
+        if video is None:
+            self.media_info.setText("No webcam video found for this session.")
+            self.play_video_btn.setEnabled(False)
+            return
+        self._video_path = video
+        self._video_start_ts = self._video_start_timestamp(video)
+        pred_ts = self.prediction.get("timestamp", 0.0)
+        offset_ms = self._offset_ms(pred_ts)
+        self.media_info.setText(f"Video: {video.name}  |  offset {self._format_ms(offset_ms)}")
+        self.player.setSource(QUrl.fromLocalFile(str(video)))
+        self.play_btn.setEnabled(True)
+        self.stop_btn.setEnabled(True)
+        self._seek_slider.setEnabled(True)
+
+    def _offset_ms(self, pred_ts: float) -> int:
+        if self._video_start_ts is None:
+            return 0
+        return int(max(0, pred_ts - self._video_start_ts) * 1000)
+
+    def _play_video_at_prediction(self) -> None:
+        if self._video_path is None:
+            self._load_session_video()
+        offset_ms = self._offset_ms(self.prediction.get("timestamp", 0.0))
+        self.image_overlay.hide()
+        self.video_widget.show()
+        self.player.setPosition(offset_ms)
+        self.player.play()
+        self.play_btn.setText("⏸")
+
+    # ------------------------------------------------------------------
+    # Windowed playback: keep the playhead inside a ±30 s preview window.
+    # ------------------------------------------------------------------
+
+    def _preview_bounds_ms(self) -> tuple[int, int]:
+        """Return start/end offset in ms for the 30 s clip around the prediction."""
+        offset_ms = self._offset_ms(self.prediction.get("timestamp", 0.0))
+        duration = self.player.duration()
+        end_ms = offset_ms + 30000
+        if duration > 0:
+            end_ms = min(end_ms, duration)
+        return max(0, offset_ms - 15000), end_ms
+
+    def _clamp_to_preview_window(self) -> None:
+        """Pause playback when the playhead leaves the selected 30 s preview."""
+        position = self.player.position()
+        start_ms, end_ms = self._preview_bounds_ms()
+        if position < start_ms or position >= end_ms:
+            self.player.pause()
+            self.play_btn.setText("▶")
+
+    def _on_media_status_changed(self, status: QMediaPlayer.MediaStatus) -> None:
+        if status == QMediaPlayer.MediaStatus.LoadedMedia and not self._auto_seek_done:
+            self._auto_seek_done = True
+            # Auto-seek to the prediction offset once the video is ready.
+            self._play_video_at_prediction()
+
+    def _on_position_changed(self, position: int) -> None:
+        if not self._seek_slider.isSliderDown():
+            self._seek_slider.setValue(position)
+        self._update_time_label(position, self.player.duration())
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self._clamp_to_preview_window()
+
+    def _on_duration_changed(self, duration: int) -> None:
+        self._seek_slider.setRange(0, duration)
+        self._update_time_label(self.player.position(), duration)
+
+    def _on_seek_released(self) -> None:
+        start_ms, end_ms = self._preview_bounds_ms()
+        value = max(start_ms, min(self._seek_slider.value(), end_ms))
+        self.player.setPosition(value)
+
+    def _toggle_playback(self) -> None:
+        if self.player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.player.pause()
+            self.play_btn.setText("▶")
+        else:
+            self.image_overlay.hide()
+            self.video_widget.show()
+            start_ms, end_ms = self._preview_bounds_ms()
+            if self.player.position() < start_ms or self.player.position() >= end_ms:
+                self.player.setPosition(start_ms)
+            self.player.play()
+            self.play_btn.setText("⏸")
+
+    def _stop(self) -> None:
+        self.player.stop()
+        self.play_btn.setText("▶")
+        self._seek_slider.setValue(0)
+        self._update_time_label(0, self.player.duration())
+
+    @staticmethod
+    def _format_ms(ms: int) -> str:
+        seconds = max(0, ms) // 1000
+        return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+    def _update_time_label(self, position: int, duration: int) -> None:
+        self._time_label.setText(f"{self._format_ms(position)} / {self._format_ms(duration)}")
+
+    # ------------------------------------------------------------------
+    # Snapshots
+    # ------------------------------------------------------------------
+
+    def _populate_snapshots(self, ts: float) -> None:
+        self.snap_list.clear()
+        if not self.webcam_dir.exists():
+            self.snap_list.addItem("No webcam folder found")
+            return
+        snaps: List[Path] = []
+        # New layout: session folders.
+        for folder in self.webcam_dir.iterdir():
+            if folder.is_dir() and folder.name.startswith(f"session_{self.session_id}_"):
+                snap_dir = folder / "snapshots"
+                if snap_dir.exists():
+                    snaps.extend(self._collect_snapshots(snap_dir, ts))
+        # Old layout: top-level snapshots folder.
+        if not snaps:
+            old_snap_dir = self.webcam_dir / "snapshots"
+            if old_snap_dir.exists():
+                snaps.extend(self._collect_snapshots(old_snap_dir, ts))
+        snaps.sort(key=lambda p: abs(p.stat().st_mtime - ts))
+        for path in snaps:
+            item = QListWidgetItem(path.name)
+            item.setData(Qt.ItemDataRole.UserRole, str(path))
+            self.snap_list.addItem(item)
+        if self.snap_list.count() == 0:
+            self.snap_list.addItem("No snapshots within ±30 seconds")
+
+    @staticmethod
+    def _collect_snapshots(snap_dir: Path, ts: float) -> List[Path]:
+        """Return snapshots in snap_dir whose mtime is within ±30 s of ts."""
+        result: List[Path] = []
+        for path in snap_dir.glob("*.jpg"):
+            try:
+                file_ts = path.stat().st_mtime
+            except Exception:
+                file_ts = 0.0
+            if abs(file_ts - ts) <= 30.0:
+                result.append(path)
+        return result
+
+    def _show_snapshots(self) -> None:
+        self._populate_snapshots(self.prediction.get("timestamp", 0.0))
+
+    def _show_snapshot_image(self, item: QListWidgetItem) -> None:
+        path_str = item.data(Qt.ItemDataRole.UserRole)
+        if not path_str:
+            return
+        path = Path(path_str)
+        self.player.stop()
+        self.play_btn.setText("▶")
+        self.video_widget.hide()
+        self.image_overlay.show()
+        pixmap = QPixmap(str(path))
+        if pixmap.isNull():
+            self.image_overlay.setText(f"Could not load {path.name}")
+            self.image_overlay.setStyleSheet("background-color: #000000; color: #ffffff; font-size: 16px;")
+            return
+        scaled = pixmap.scaled(
+            self.image_overlay.size(),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        self.image_overlay.setPixmap(scaled)
+        self.image_overlay.setStyleSheet("background-color: #000000;")
+        self.media_info.setText(f"Snapshot: {path.name}")
+
+    def resizeEvent(self, event) -> None:
+        """Rescale the current snapshot when the dialog is resized."""
+        super().resizeEvent(event)
+        if self.image_overlay.isVisible():
+            current_item = self.snap_list.currentItem()
+            if current_item is not None:
+                path_str = current_item.data(Qt.ItemDataRole.UserRole)
+                if path_str:
+                    self._show_snapshot_image(current_item)
+
+    def closeEvent(self, event) -> None:
+        """Stop playback when the dialog closes so audio does not continue."""
+        self.player.stop()
+        event.accept()

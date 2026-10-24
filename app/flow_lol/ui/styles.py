@@ -315,6 +315,14 @@ def stylesheet() -> str:
     }}
 
     /* Dialogs / message boxes ----------------------------------------- */
+    QDialog {{
+        background: {c.SURFACE};
+    }}
+
+    QDialog QLabel {{
+        color: {c.TEXT};
+    }}
+
     QMessageBox {{
         background: {c.SURFACE};
     }}

@@ -124,7 +124,7 @@ class MainWindow(QMainWindow):
         self._content_card.content_layout().setContentsMargins(0, 0, 0, 0)
         self.stack = QStackedWidget()
 
-        self.dashboard = DashboardWidget()
+        self.dashboard = DashboardWidget(webcam_dir=Path(self.settings.webcam_save_path))
         self.stack.addWidget(self.dashboard)
 
         self.logs = LogsWidget(logs_dir=Path(self.settings.logs_save_path))
@@ -133,7 +133,6 @@ class MainWindow(QMainWindow):
         self.webcam = WebcamWidget(
             on_toggle=self._toggle_webcam,
             webcam_dir=Path(self.settings.webcam_save_path),
-            snapshot_dir=Path(self.settings.snapshot_save_path),
         )
         self.stack.addWidget(self.webcam)
 
@@ -142,6 +141,10 @@ class MainWindow(QMainWindow):
 
         layout.addWidget(main, stretch=1)
         self.setCentralWidget(central)
+
+        # Keep the webcam tab in sync with the dashboard's selected session.
+        self.dashboard.session_changed.connect(self.webcam.set_session_filter)
+        self.webcam.set_session_filter(self.dashboard.current_session_id())
 
         # Header controls reference self.webcam, so update them only after it exists.
         self._update_header_controls(False)
@@ -365,9 +368,8 @@ class MainWindow(QMainWindow):
             logger.info("Settings updated")
             self.logs.set_logs_dir(Path(self.settings.logs_save_path))
             self.webcam.webcam_dir = Path(self.settings.webcam_save_path)
-            self.webcam.snapshot_dir = Path(self.settings.snapshot_save_path)
             self.webcam.refresh_list()
-            self.webcam.refresh_snapshots()
+            self.dashboard.webcam_dir = Path(self.settings.webcam_save_path)
             self._prediction_step_seconds = (
                 self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
             )

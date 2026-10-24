@@ -183,7 +183,6 @@ class SensorWorker(QThread):
         if self.settings.webcam_enabled:
             self.webcam = WebcamRecorder(
                 output_dir=self.settings.webcam_save_path,
-                snapshot_dir=self.settings.snapshot_save_path,
                 enabled=True,
                 on_snapshot=self._on_webcam_snapshot,
             )
@@ -398,7 +397,6 @@ class SensorWorker(QThread):
         else:
             self.webcam = WebcamRecorder(
                 output_dir=self.settings.webcam_save_path,
-                snapshot_dir=self.settings.snapshot_save_path,
                 enabled=True,
                 on_snapshot=self._on_webcam_snapshot,
             )

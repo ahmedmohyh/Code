@@ -27,7 +27,6 @@ class WebcamRecorder:
     def __init__(
         self,
         output_dir: Path,
-        snapshot_dir: Optional[Path] = None,
         enabled: bool = True,
         fps: int = DEFAULT_FPS,
         width: int = DEFAULT_WIDTH,
@@ -36,7 +35,6 @@ class WebcamRecorder:
         on_snapshot: Optional[Callable[[Path], None]] = None,
     ) -> None:
         self.output_dir = Path(output_dir)
-        self.snapshot_dir = Path(snapshot_dir) if snapshot_dir else self.output_dir / "snapshots"
         self.enabled = enabled
         self.fps = fps
         self.width = width
@@ -47,6 +45,7 @@ class WebcamRecorder:
         self._active = False
         self._thread: Optional[threading.Thread] = None
         self._output_path: Optional[Path] = None
+        self._session_folder: Optional[Path] = None
         self._stop_event = threading.Event()
         self._snapshots: List[Path] = []
 
@@ -61,7 +60,9 @@ class WebcamRecorder:
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
-        self._output_path = self.output_dir / f"session_{session_id}_{timestamp}.mp4"
+        self._session_folder = self.output_dir / f"session_{session_id}_{timestamp}"
+        self._session_folder.mkdir(parents=True, exist_ok=True)
+        self._output_path = self._session_folder / f"session_{session_id}_{timestamp}.mp4"
 
         self._stop_event.clear()
         self._thread = threading.Thread(
@@ -85,6 +86,7 @@ class WebcamRecorder:
         logger.info("Webcam recording stopped: %s", self._output_path)
         path = self._output_path
         self._output_path = None
+        self._session_folder = None
         self._thread = None
         return path
 
@@ -130,7 +132,8 @@ class WebcamRecorder:
             for _ in range(3):
                 cap.read()
 
-            self.snapshot_dir.mkdir(parents=True, exist_ok=True)
+            snapshot_dir = self._session_folder / "snapshots"
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
             frame_time = 1.0 / self.fps
             frame_count = 0
             snapshot_frames = max(1, int(self.fps * self.snapshot_interval_seconds))
@@ -155,12 +158,14 @@ class WebcamRecorder:
                 cap.release()
 
     def _save_snapshot(self, frame: object) -> None:
-        """Save a single frame as a JPG snapshot."""
+        """Save a single frame as a JPG snapshot inside the session folder."""
         try:
             import cv2
 
             timestamp = time.strftime("%Y%m%d_%H%M%S")
-            path = self.snapshot_dir / f"snapshot_{timestamp}_{int(time.time() * 1000) % 1000}.jpg"
+            snapshot_dir = self._session_folder / "snapshots"
+            snapshot_dir.mkdir(parents=True, exist_ok=True)
+            path = snapshot_dir / f"snapshot_{timestamp}_{int(time.time() * 1000) % 1000}.jpg"
             cv2.imwrite(str(path), frame)
             self._snapshots.append(path)
             logger.debug("Webcam snapshot saved: %s", path)
