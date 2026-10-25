@@ -23,6 +23,7 @@ from PyQt6.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSlider,
     QSplitter,
@@ -582,9 +583,14 @@ class DashboardWidget(QWidget):
         timeline_card.content_layout().addWidget(self.timeline)
         splitter.addWidget(timeline_card)
 
-        # Details card
+        # Details card (scrollable so long session details are always readable)
         details_card = CardWidget("Session details")
-        details_layout = details_card.content_layout()
+        details_scroll = QScrollArea()
+        details_scroll.setWidgetResizable(True)
+        details_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        details_widget = QWidget()
+        details_layout = QVBoxLayout(details_widget)
+        details_layout.setSpacing(Spacing.SM)
 
         self.details_label = QLabel("Select a session to see details.")
         self.details_label.setWordWrap(True)
@@ -614,6 +620,9 @@ class DashboardWidget(QWidget):
         self.open_replay_btn.clicked.connect(self._open_selected_replay)
         self.open_replay_btn.setEnabled(False)
         details_layout.addWidget(self.open_replay_btn)
+
+        details_scroll.setWidget(details_widget)
+        details_card.content_layout().addWidget(details_scroll)
 
         splitter.addWidget(details_card)
         splitter.setSizes([520, 450])

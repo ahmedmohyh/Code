@@ -4,9 +4,12 @@ REM Run this batch file from the project root in a normal Command Prompt or Powe
 
 setlocal EnableDelayedExpansion
 
+REM Switch to the project root (the folder containing this script's parent).
+cd /d "%~dp0\.."
+
 REM ------------------------------------------------------------------
 REM 1. Activate the project virtual environment.
-REM    Adjust the path if you created the venv somewhere else.
+REM    The venv is expected next to the script's parent folder (app\.venv).
 REM ------------------------------------------------------------------
 if not exist ".venv\Scripts\activate.bat" (
     echo ERROR: Virtual environment not found at .venv\Scripts\activate.bat
