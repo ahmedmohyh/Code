@@ -11,6 +11,7 @@ from the ``lockfile`` that the client creates in its install directory.
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import os
 import ssl
@@ -23,11 +24,13 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 # Common Windows locations for the League Client lockfile.
+# The Riot Client lockfile must come LAST because it exposes a different API
+# and will otherwise make every LCU request return 404.
 _LOCKFILE_CANDIDATES: List[Callable[[], Path | None]] = [
+    lambda: Path("C:/Riot Games/League of Legends/lockfile"),
     lambda: _local_appdata_path("League of Legends", "lockfile"),
     lambda: _local_appdata_path("Riot Games", "League of Legends", "lockfile"),
     lambda: _local_appdata_path("Riot Games", "Riot Client", "Config", "lockfile"),
-    lambda: Path("C:/Riot Games/League of Legends/lockfile"),
 ]
 
 # Queue ID -> human-readable mode used by the rest of the app.
@@ -74,13 +77,18 @@ def _local_appdata_path(*parts: str) -> Path | None:
 
 def _find_lockfile() -> Path | None:
     """Return the first existing lockfile path, or None if not found."""
+    checked: List[str] = []
     for candidate in _LOCKFILE_CANDIDATES:
         try:
             path = candidate()
-            if path is not None and path.exists():
-                return path
+            if path is not None:
+                checked.append(str(path))
+                if path.exists():
+                    logger.info("LCU lockfile candidate found: %s", path)
+                    return path
         except Exception:
             continue
+    logger.info("LCU lockfile not found. Checked: %s", checked)
     return None
 
 
@@ -99,6 +107,7 @@ def _find_lockfile_from_process() -> Path | None:
                 if exe:
                     path = Path(exe).parent / "lockfile"
                     if path.exists():
+                        logger.info("LCU lockfile found from process: %s", path)
                         return path
     except Exception as exc:
         logger.debug("Could not locate lockfile from process: %s", exc)
@@ -114,7 +123,9 @@ def _parse_lockfile(path: Path) -> Optional[LcuCredentials]:
             logger.warning("Unexpected lockfile format: %s", raw)
             return None
         _, _, port_str, password, protocol = parts
-        return LcuCredentials(port=int(port_str), password=password, protocol=protocol)
+        creds = LcuCredentials(port=int(port_str), password=password, protocol=protocol)
+        logger.info("LCU lockfile parsed: port=%s protocol=%s", creds.port, creds.protocol)
+        return creds
     except Exception as exc:
         logger.warning("Failed to parse lockfile %s: %s", path, exc)
         return None
@@ -147,9 +158,6 @@ class LcuClient:
         self._in_match = False
         self._current_mode: str = "Unknown"
 
-    def last_phase(self) -> str:
-        """Return the most recently polled gameflow phase."""
-        return self._last_phase
         self._ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
@@ -157,19 +165,27 @@ class LcuClient:
         self._event_session: Optional[aiohttp.ClientSession] = None
         self._seen_event_ids: set[str] = set()
 
+    def last_phase(self) -> str:
+        """Return the most recently polled gameflow phase."""
+        return self._last_phase
+
     async def is_available(self) -> bool:
         """Return True if a lockfile can be found and the client responds."""
         if not await self._ensure_credentials():
+            logger.info("LCU not available: no lockfile credentials")
             return False
+        url = f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase"
         try:
             session = self._get_session()
             async with session.get(
-                f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase",
+                url,
                 timeout=aiohttp.ClientTimeout(total=3.0),
             ) as resp:
+                body = await resp.text()
+                logger.info("LCU availability check: %s -> status %s body=%s", url, resp.status, _trim(body))
                 return resp.status == 200
         except Exception as exc:
-            logger.debug("LCU availability check failed: %s", exc)
+            logger.info("LCU availability check failed: %s -> %s", url, exc)
             return False
 
     async def _ensure_credentials(self) -> bool:
@@ -182,7 +198,7 @@ class LcuClient:
         self._creds = _parse_lockfile(path)
         if self._creds is None:
             return False
-        logger.info("LCU lockfile found: %s (port %s)", path, self._creds.port)
+        logger.info("LCU using credentials from %s (port %s)", path, self._creds.port)
         return True
 
     def _get_session(self) -> aiohttp.ClientSession:
@@ -208,6 +224,7 @@ class LcuClient:
 
         phase = await self._get_phase()
         if phase is None:
+            logger.info("LCU client unreachable; dropping credentials")
             # Client may have closed; drop credentials and let the detector retry.
             self._creds = None
             if self.__session is not None and not self.__session.closed:
@@ -215,8 +232,11 @@ class LcuClient:
                 self.__session = None
             return False
 
-        self._last_phase = phase
-        logger.debug("LCU gameflow phase: %s", phase)
+        if phase != self._last_phase:
+            logger.info("LCU gameflow phase changed: %s -> %s", self._last_phase, phase)
+            self._last_phase = phase
+        else:
+            logger.debug("LCU gameflow phase: %s", phase)
 
         if phase == "InProgress" and not self._in_match:
             mode = await self._resolve_game_mode()
@@ -243,15 +263,22 @@ class LcuClient:
             return
         try:
             session = self._get_event_session()
+            url = "https://127.0.0.1:2999/liveclientdata/eventdata"
             async with session.get(
-                "https://127.0.0.1:2999/liveclientdata/eventdata",
+                url,
                 timeout=aiohttp.ClientTimeout(total=2.0),
             ) as resp:
+                body = await resp.text()
+                logger.info("Live Client GET %s -> status %s body=%s", url, resp.status, _trim(body))
                 if resp.status != 200:
                     return
-                data = await resp.json()
+                try:
+                    data = json.loads(body)
+                except Exception as exc:
+                    logger.warning("Live Client eventdata is not valid JSON: %s", exc)
+                    return
         except Exception as exc:
-            logger.debug("Live Client eventdata request failed: %s", exc)
+            logger.info("Live Client eventdata request failed: %s", exc)
             return
 
         events = data.get("Events", []) if isinstance(data, dict) else []
@@ -262,7 +289,7 @@ class LcuClient:
             self._seen_event_ids.add(event_id)
             parsed = self._parse_live_event(event)
             if parsed is not None:
-                logger.debug("Live Client event: %s", parsed)
+                logger.info("Live Client new event: %s", parsed)
                 self.on_game_event(parsed)
 
     def _get_event_session(self) -> aiohttp.ClientSession:
@@ -317,34 +344,48 @@ class LcuClient:
 
     async def _get_phase(self) -> Optional[str]:
         """Return the current gameflow phase string, or None on failure."""
+        url = f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase"
         try:
             session = self._get_session()
             async with session.get(
-                f"{self._creds.base_url}/lol-gameflow/v1/gameflow-phase",
+                url,
                 timeout=aiohttp.ClientTimeout(total=3.0),
             ) as resp:
+                body = await resp.text()
+                logger.info("LCU GET %s -> status %s body=%s", url, resp.status, _trim(body))
                 if resp.status != 200:
                     return None
                 # Response is a JSON string like "\"InProgress\"".
-                data = await resp.json()
+                try:
+                    data = json.loads(body)
+                except Exception as exc:
+                    logger.warning("LCU phase response is not valid JSON: %s", exc)
+                    return None
                 if isinstance(data, str):
                     return data
                 return data.get("phase") if isinstance(data, dict) else None
         except Exception as exc:
-            logger.debug("LCU phase request failed: %s", exc)
+            logger.info("LCU phase request failed: %s -> %s", url, exc)
             return None
 
     async def _resolve_game_mode(self) -> str:
         """Ask the LCU session endpoint for the queue ID and map it to a mode."""
+        url = f"{self._creds.base_url}/lol-gameflow/v1/session"
         try:
             session = self._get_session()
             async with session.get(
-                f"{self._creds.base_url}/lol-gameflow/v1/session",
+                url,
                 timeout=aiohttp.ClientTimeout(total=3.0),
             ) as resp:
+                body = await resp.text()
+                logger.info("LCU GET %s -> status %s body=%s", url, resp.status, _trim(body))
                 if resp.status != 200:
                     return "Unknown"
-                session_data = await resp.json()
+                try:
+                    session_data = json.loads(body)
+                except Exception as exc:
+                    logger.warning("LCU session response is not valid JSON: %s", exc)
+                    return "Unknown"
                 queue_id = self._extract_queue_id(session_data)
                 if queue_id is not None:
                     return QUEUE_ID_TO_MODE.get(queue_id, f"Queue {queue_id}")
@@ -376,3 +417,10 @@ class LcuClient:
         """Clear seen event IDs, e.g. at the start of a new match."""
         self._seen_event_ids.clear()
 
+
+def _trim(text: str, max_len: int = 400) -> str:
+    """Return a one-line, length-limited string for log lines."""
+    text = text.replace("\n", " ").replace("\r", "")
+    if len(text) > max_len:
+        text = text[: max_len - 3] + "..."
+    return text

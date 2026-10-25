@@ -70,6 +70,7 @@ class SensorWorker(QThread):
         self._active_match_id: Optional[int] = None
         self._active_match_started_at: Optional[float] = None
         self._match_predictions: list = []
+        self._pending_game_events: list[dict] = []
         self._loop: Optional[asyncio.AbstractEventLoop] = None
         self._stop_event: Optional[asyncio.Event] = None
         self._preview_only = True
@@ -238,6 +239,7 @@ class SensorWorker(QThread):
             self._active_match_id = None
             self._active_match_started_at = None
             self._match_predictions.clear()
+            self._pending_game_events.clear()
             self.session_state_changed.emit(False)
 
     def record_match_start(self, game_mode: str, detected: bool = False) -> None:
@@ -253,6 +255,7 @@ class SensorWorker(QThread):
         if self.repository is None or self.session_id is None:
             return
         if self._active_match_id is not None:
+            await self._flush_pending_game_events()
             return
         self._active_match_id = self.repository.start_match(
             self.session_id, game_mode, detected=detected
@@ -261,6 +264,7 @@ class SensorWorker(QThread):
         self._match_predictions.clear()
         self.match_started.emit(game_mode, detected)
         logger.info("External match start recorded: %s (id=%s)", game_mode, self._active_match_id)
+        await self._flush_pending_game_events()
 
     def record_match_end(self) -> None:
         """Record a match end in the database from an external detector."""
@@ -287,6 +291,7 @@ class SensorWorker(QThread):
         self._active_match_id = None
         self._active_match_started_at = None
         self._match_predictions.clear()
+        self._pending_game_events.clear()
         self.match_ended.emit()
         logger.info("External match end recorded: id=%s", match_id)
 
@@ -300,8 +305,20 @@ class SensorWorker(QThread):
         )
 
     async def _do_record_game_event(self, event: dict) -> None:
-        if self.repository is None or self.session_id is None or self._active_match_id is None:
+        if self.repository is None or self.session_id is None:
             return
+        if self._active_match_id is None:
+            # Match start may still be propagating across threads; buffer briefly.
+            if len(self._pending_game_events) < 100:
+                self._pending_game_events.append(event)
+                logger.debug("Buffered game event until match start: %s", event.get("description"))
+            else:
+                logger.warning("Pending game event buffer full; dropping event")
+            return
+        await self._write_game_event(event)
+
+    async def _write_game_event(self, event: dict) -> None:
+        """Persist a single game event to the repository and emit it."""
         raw = event.get("raw", {})
         event_time = float(event["timestamp"])
         absolute_ts = (self._active_match_started_at or time.time()) + event_time
@@ -316,6 +333,15 @@ class SensorWorker(QThread):
             source_json=json.dumps(raw, default=str, ensure_ascii=False),
         )
         self.game_event.emit(event)
+
+    async def _flush_pending_game_events(self) -> None:
+        """Write any events that arrived before the match start was recorded."""
+        if not self._pending_game_events:
+            return
+        logger.info("Flushing %s buffered game events", len(self._pending_game_events))
+        for event in self._pending_game_events:
+            await self._write_game_event(event)
+        self._pending_game_events.clear()
 
     # ------------------------------------------------------------------
     # Signal handlers
@@ -346,6 +372,22 @@ class SensorWorker(QThread):
         if self.ecg_writer is not None:
             self.ecg_writer.add_samples(name, samples)
         self.samples.emit(name, samples)
+
+    def _scan_replays(self, match_id: int) -> None:
+        """Try to link replay files to the finished match."""
+        if self.repository is None or self.session_id is None:
+            return
+        try:
+            replays = scan_replays_for_session(
+                replay_dir=self.settings.replay_save_path,
+                session_id=self.session_id,
+                match_id=match_id,
+                repository=self.repository,
+            )
+            if replays:
+                logger.info("Linked %s replay(s) to match %s", len(replays), match_id)
+        except Exception:
+            logger.exception("Failed to scan replays for match %s", match_id)
 
 
     def toggle_webcam(self) -> None:

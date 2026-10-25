@@ -82,8 +82,11 @@ class MainWindow(QMainWindow):
         self._session_active = False
         self._client_connected = False
         self._client_phase = "None"
-        self._in_match = False
         self._is_shutting_down = False
+        self._webcam_check_worker: Optional[QThread] = None
+
+        # Screen-edge status indicator (floating box in top-right corner).
+        self._edge_status = EdgeStatusWindow()
 
         self._apply_stylesheet()
         self._create_menu()
@@ -99,12 +102,11 @@ class MainWindow(QMainWindow):
         self._game_detector.client_state_changed.connect(self._on_game_client_changed)
         self._game_detector.start()
 
-        # Screen-edge status indicator (thin colored bar at top of screen).
-        self._edge_status = EdgeStatusWindow(self)
-        self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
-
         # System tray icon so the app can run minimized to tray.
         self._create_tray_icon()
+
+        # Enable the edge window if the user has it turned on in settings.
+        self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
 
         self._update_status()
 
@@ -582,7 +584,6 @@ class MainWindow(QMainWindow):
             self._status_label.setText("H10 is still connecting. Wait for the green LED.")
             return
         self._prediction_count = 0
-        self._in_match = False
         self.worker.start_session()
         self._status_label.setText("Session started. Recording ECG, predictions and webcam...")
         logger.info("User started recording session")
@@ -607,12 +608,16 @@ class MainWindow(QMainWindow):
             self.webcam.refresh_list()
             self._status_label.setText("Session stopped. H10 preview still active.")
             self._edge_status.set_unknown()
+            self._update_status()
         else:
             self._status_label.setText("Session active. Recording ECG, predictions and webcam.")
             # If a match is already in progress when the session starts, record it retroactively.
-            if self._in_match and self.worker is not None and self.worker.isRunning():
-                mode = self.game_mode_combo.currentText()
+            detector_in_match = self._game_detector is not None and self._game_detector.is_match_active()
+            if detector_in_match and self.worker is not None and self.worker.isRunning():
+                mode = self._game_detector.current_game_mode() or self.game_mode_combo.currentText()
+                self._in_match = True
                 self.worker.record_match_start(mode, detected=True)
+                self.match_toggle.set_active(True)
         self._update_header_controls(self.worker is not None and self.worker.isRunning())
 
     def _on_match_toggle(self) -> None:
@@ -698,21 +703,31 @@ class MainWindow(QMainWindow):
             self._tray_icon.hide()
 
         if self.worker is not None:
-            if self.worker.isRunning():
-                self.worker.stop()
-                if not self.worker.wait(5000):
-                    logger.warning("Sensor worker did not stop within 5 s")
+            try:
+                if self.worker.isRunning():
+                    self.worker.stop()
+                    if not self.worker.wait(5000):
+                        logger.warning("Sensor worker did not stop within 5 s")
+            except RuntimeError:
+                pass
             self.worker = None
 
         if self._game_detector is not None:
-            if self._game_detector.isRunning():
-                self._game_detector.stop()
-                if not self._game_detector.wait(5000):
-                    logger.warning("Game detector thread did not stop within 5 s")
+            try:
+                if self._game_detector.isRunning():
+                    self._game_detector.stop()
+                    if not self._game_detector.wait(5000):
+                        logger.warning("Game detector thread did not stop within 5 s")
+            except RuntimeError:
+                pass
             self._game_detector = None
 
-        if self._webcam_check_worker is not None and self._webcam_check_worker.isRunning():
-            self._webcam_check_worker.wait(2000)
+        if self._webcam_check_worker is not None:
+            try:
+                if self._webcam_check_worker.isRunning():
+                    self._webcam_check_worker.wait(2000)
+            except RuntimeError:
+                pass
             self._webcam_check_worker = None
 
         self._edge_status.set_enabled(False)
@@ -821,6 +836,7 @@ class MainWindow(QMainWindow):
         self.prediction_progress.setValue(0)
         self.prediction_progress.setFormat("0 s")
         self._edge_status.update_state(label)
+        self._edge_status.set_detail(f"Prediction #{self._prediction_count}")
 
     def _tick_prediction_progress(self) -> None:
         import time
@@ -1029,3 +1045,9 @@ class MainWindow(QMainWindow):
             self.client_label.setProperty("role", "muted")
             self.client_label.setStyleSheet("")
             self.client_status_layout.setEnabled(False)
+
+        # Mirror the same four status indicators in the edge window.
+        self._edge_status.set_h10_active("connected" in self._sensor_status)
+        self._edge_status.set_recording(self._webcam_recording)
+        self._edge_status.set_lol_open(self._client_connected)
+        self._edge_status.set_in_match(self._in_match)

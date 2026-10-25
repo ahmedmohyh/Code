@@ -72,25 +72,44 @@ class GameDetectorThread(QThread):
     def _on_client_state_change(self, connected: bool, phase: str) -> None:
         self.client_state_changed.emit(connected, phase)
 
+    def is_match_active(self) -> bool:
+        """Return True if the detector currently sees an active match."""
+        return self._detector.in_match() if self._detector is not None else False
+
+    def current_game_mode(self) -> Optional[str]:
+        """Return the current game mode, if known."""
+        return self._detector.current_game_mode() if self._detector is not None else None
+
     def start_match(self, game_mode: str, detected: bool = False) -> None:
         """Request a manual match start from the UI thread."""
         if self._loop is None or self._detector is None:
             logger.warning("Cannot start match: detector thread not running")
             return
-        asyncio.run_coroutine_threadsafe(
+        logger.info("Forwarding manual match start request: %s", game_mode)
+        future = asyncio.run_coroutine_threadsafe(
             self._detector.start_match(game_mode, detected=detected),
             self._loop,
         )
+        future.add_done_callback(lambda f: self._log_future(f, "manual match start"))
 
     def end_match(self) -> None:
         """Request a manual match end from the UI thread."""
         if self._loop is None or self._detector is None:
             logger.warning("Cannot end match: detector thread not running")
             return
-        asyncio.run_coroutine_threadsafe(
+        logger.info("Forwarding manual match end request")
+        future = asyncio.run_coroutine_threadsafe(
             self._detector.end_match(),
             self._loop,
         )
+        future.add_done_callback(lambda f: self._log_future(f, "manual match end"))
+
+    @staticmethod
+    def _log_future(future, action: str) -> None:
+        try:
+            future.result()
+        except Exception:
+            logger.exception("%s failed", action)
 
     def stop(self) -> None:
         """Stop the detector loop and wait for the thread to finish."""

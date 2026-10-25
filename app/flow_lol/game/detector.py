@@ -91,7 +91,14 @@ class GameDetector:
         """Manually mark the beginning of a LoL match."""
         async with self._match_lock:
             if self._in_match:
-                logger.debug("start_match ignored: already in a match")
+                # Already in a match (e.g. LCU auto-detected first). Re-emit so the
+                # UI button state stays in sync, but do not change detector state.
+                logger.info("Manual start_match ignored: already in a match (%s)", self._current_game_mode)
+                if self.on_match_start:
+                    try:
+                        self.on_match_start(self._current_game_mode or game_mode, self._current_detected)
+                    except Exception:
+                        logger.exception("on_match_start resync callback failed")
                 return
             self._in_match = True
             self._current_game_mode = game_mode
@@ -129,7 +136,18 @@ class GameDetector:
         """Try LCU first; fall back to process detection."""
         try:
             lcu_available = False
+            poll_count = 0
             while not self._stop_event.is_set():
+                poll_count += 1
+                if poll_count % 30 == 1:
+                    logger.info(
+                        "Game detector poll tick (in_match=%s lcu_available=%s client_connected=%s phase=%s)",
+                        self._in_match,
+                        lcu_available,
+                        self._client_connected,
+                        self._client_phase,
+                    )
+
                 if not lcu_available:
                     lcu_available = await self._lcu.is_available()
                     if lcu_available:
@@ -155,44 +173,9 @@ class GameDetector:
 
                 await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:
-            logger.debug("Game detector poll loop cancelled")
+            logger.info("Game detector poll loop cancelled")
             raise
 
-    async def _detect_by_process(self) -> None:
-        """Detect match start/end via running LoL executables."""
-        running = await self._detect_lol_processes()
-        self._set_client_state(running, "process" if running else "None")
-        if running and not self._in_match:
-            await self.start_match("auto-detected", detected=True)
-        elif not running and self._in_match and self._current_detected:
-            await self.end_match()
-
-    async def _detect_lol_processes(self) -> bool:
-        """Return True if a LoL game or client process is running."""
-        try:
-            import psutil
-        except ImportError:
-            logger.warning("psutil not installed; cannot auto-detect LoL process")
-            return False
-
-        def _check() -> bool:
-            try:
-                for proc in psutil.process_iter(["name"]):
-                    name = proc.info.get("name")
-                    if name in LOL_GAME_EXECUTABLES or name in LOL_CLIENT_EXECUTABLES:
-                        return True
-            except Exception as exc:
-                logger.debug("Process enumeration failed: %s", exc)
-            return False
-
-        try:
-            return await asyncio.wait_for(
-                asyncio.to_thread(_check),
-                timeout=1.0,
-            )
-        except asyncio.TimeoutError:
-            logger.warning("Process detection timed out")
-            return False
 
     def _on_lcu_match_start(self, game_mode: str, detected: bool) -> None:
         """Forward LCU start event to the worker callback."""
@@ -211,6 +194,63 @@ class GameDetector:
     def _on_lcu_match_end(self) -> None:
         """Forward LCU end event to the worker callback."""
         asyncio.create_task(self.end_match())
+
+    async def _detect_by_process(self) -> None:
+        """Detect client open vs active match via running LoL executables."""
+        client_running = await self._detect_client_processes()
+        game_running = await self._detect_game_processes()
+
+        logger.info(
+            "Process detection result: client_running=%s game_running=%s in_match=%s",
+            client_running,
+            game_running,
+            self._in_match,
+        )
+
+        # Client open signal (separate from match-in-progress).
+        self._set_client_state(client_running or game_running, "process" if (client_running or game_running) else "None")
+
+        # Only the actual game executable counts as a match.
+        if game_running and not self._in_match:
+            logger.info("Process detection: starting auto-detected match")
+            await self.start_match("auto-detected", detected=True)
+        elif not game_running and self._in_match and self._current_detected:
+            logger.info("Process detection: ending auto-detected match")
+            await self.end_match()
+
+    @staticmethod
+    async def _detect_client_processes() -> bool:
+        """Return True if a League Client process is running."""
+        return await GameDetector._check_processes(LOL_CLIENT_EXECUTABLES)
+
+    @staticmethod
+    async def _detect_game_processes() -> bool:
+        """Return True if the actual League game process is running."""
+        return await GameDetector._check_processes(LOL_GAME_EXECUTABLES)
+
+    @staticmethod
+    async def _check_processes(names: set[str]) -> bool:
+        """Return True if any process in ``names`` is currently running."""
+        try:
+            import psutil
+        except ImportError:
+            logger.warning("psutil not installed; cannot auto-detect LoL processes")
+            return False
+
+        def _check() -> bool:
+            try:
+                for proc in psutil.process_iter(["name"]):
+                    if proc.info.get("name") in names:
+                        return True
+            except Exception as exc:
+                logger.debug("Process enumeration failed: %s", exc)
+            return False
+
+        try:
+            return await asyncio.wait_for(asyncio.to_thread(_check), timeout=1.0)
+        except asyncio.TimeoutError:
+            logger.warning("Process detection timed out")
+            return False
 
     def _set_client_state(self, connected: bool, phase: str) -> None:
         """Notify UI when the League client becomes reachable or changes phase."""
