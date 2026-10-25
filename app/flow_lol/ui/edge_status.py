@@ -28,14 +28,16 @@ class EdgeStatusWindow(QWidget):
         # No parent so the window survives main-window minimize/hide.
         super().__init__(None)
         self.setWindowFlags(
-            Qt.WindowType.FramelessWindowHint
-            | Qt.WindowType.WindowStaysOnTopHint
+            Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
             | Qt.WindowType.WindowDoesNotAcceptFocus
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, False)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating, True)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+
+        self._drag_active = False
+        self._drag_offset = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 8, 10, 8)
@@ -75,6 +77,9 @@ class EdgeStatusWindow(QWidget):
 
         self._enabled = False
         self._screen_index = -1
+        self._default_pos = None
+        self._drag_active = False
+        self._drag_offset = None
         self.hide()
 
         # Aggressively restore visibility after a fullscreen game (e.g. LoL)
@@ -82,6 +87,23 @@ class EdgeStatusWindow(QWidget):
         self._restore_timer = QTimer(self)
         self._restore_timer.timeout.connect(self._restore_if_needed)
         self._restore_timer.start(1000)
+
+    def mousePressEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_active = True
+            self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_active and self._drag_offset is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_active = False
+            self._drag_offset = None
+            event.accept()
 
     def _screen(self) -> object | None:
         """Return the QScreen to use, or primary screen if index is invalid."""
@@ -101,6 +123,8 @@ class EdgeStatusWindow(QWidget):
         x = geo.x() + geo.width() - self.WIDTH - 12
         y = geo.y() + 12
         self.setGeometry(x, y, self.WIDTH, self.HEIGHT)
+        # Remember this as the default position; dragging overrides it until reset.
+        self._default_pos = self.pos()
 
     def set_screen_index(self, index: int) -> None:
         """Place the box on the given monitor (-1 means primary)."""
@@ -124,7 +148,6 @@ class EdgeStatusWindow(QWidget):
         if not self._enabled:
             return
         if not self.isVisible():
-            self._position_on_screen()
             self.show()
             self.raise_()
             self.activateWindow()

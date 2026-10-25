@@ -40,6 +40,12 @@ class AppSettings:
     use_biraffe2_rf: bool = True
     use_irshad_rf: bool = True
     use_biraffe2_mlp: bool = True
+    use_biraffe2_lr: bool = True
+    use_biraffe2_xgb: bool = True
+    use_biraffe2_lstm: bool = True
+    use_biraffe2_cnn: bool = True
+    use_irshad_lr: bool = True
+    use_irshad_mlp: bool = True
 
     # Signal processing
     window_seconds: int = 60  # matches the model training setup

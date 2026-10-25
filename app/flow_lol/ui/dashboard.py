@@ -594,18 +594,21 @@ class DashboardWidget(QWidget):
         details_layout.addWidget(QLabel("Matches"))
         self.match_list = QListWidget()
         self.match_list.setAlternatingRowColors(True)
+        self.match_list.setMinimumHeight(220)
         self.match_list.currentItemChanged.connect(self._on_match_selected)
-        details_layout.addWidget(self.match_list)
+        details_layout.addWidget(self.match_list, stretch=2)
 
         details_layout.addWidget(QLabel("Game events"))
         self.event_list = QListWidget()
         self.event_list.setAlternatingRowColors(True)
-        details_layout.addWidget(self.event_list)
+        self.event_list.setMinimumHeight(120)
+        details_layout.addWidget(self.event_list, stretch=1)
 
         details_layout.addWidget(QLabel("Replays"))
         self.replay_list = QListWidget()
         self.replay_list.setAlternatingRowColors(True)
-        details_layout.addWidget(self.replay_list)
+        self.replay_list.setMinimumHeight(100)
+        details_layout.addWidget(self.replay_list, stretch=1)
 
         self.open_replay_btn = QPushButton("▶ Open selected replay")
         self.open_replay_btn.clicked.connect(self._open_selected_replay)
@@ -613,7 +616,7 @@ class DashboardWidget(QWidget):
         details_layout.addWidget(self.open_replay_btn)
 
         splitter.addWidget(details_card)
-        splitter.setSizes([650, 320])
+        splitter.setSizes([520, 450])
         layout.addWidget(splitter, stretch=1)
 
     def refresh_sessions(self) -> None:
@@ -1136,7 +1139,7 @@ class PredictionInspectDialog(QDialog):
         self.events_around_list.setAlternatingRowColors(True)
         self.events_around_list.setMinimumHeight(80)
         self.events_around_list.setMaximumHeight(140)
-        self._populate_events_around(pred_ts)
+        self._populate_events_around(ts)
         events_layout.addWidget(self.events_around_list)
         layout.addWidget(events_card)
 

@@ -431,18 +431,19 @@ def export_biraffe2_classical(
     _fit_and_save(model, X, y, feature_names, outlier, scaler, baseline, meta, output_path)
 
 
-def export_biraffe2_mlp(
+def _export_biraffe2_torch(
     config_path: Path,
     output_path: Path,
+    architecture: str,
+    torch_type: str,
     Xy_cache: Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray], List[str], Dict[str, Any]] | None = None,
 ) -> None:
-    """Train and export the BIRAFFE2 MLP deep-learning model.
+    """Train and export a BIRAFFE2 deep-learning model (MLP / LSTM / CNN1D).
 
     The research DeepClassifierWrapper depends on the research flow_lol package,
     so we train with it, then save only the CPU weights and scaler in a plain
-    dict.  At runtime the app reconstructs its self-contained
-    ``flow_lol.inference.mlp_model.AppMLPClassifier`` from that dict, so the
-    exported bundle has no research-package dependency.
+    dict. At runtime the app reconstructs its self-contained classifier from
+    that dict, so the exported bundle has no research-package dependency.
     """
     import torch
 
@@ -457,15 +458,13 @@ def export_biraffe2_mlp(
 
     config = load_config(str(config_path))
     research_model = build_deep_classifier(
-        "MLP", n_features=X.shape[1], n_classes=2, random_state=config.seed
+        architecture, n_features=X.shape[1], n_classes=2, random_state=config.seed
     )
     research_model.fit(X, y)
     research_model.model_.to("cpu")
 
-    # Store the MLP as a plain, picklable dict.  This avoids any custom class
-    # pickling issues when loading the bundle in the deployed app.
-    mlp_model: Dict[str, Any] = {
-        "type": "torch_mlp",
+    torch_model: Dict[str, Any] = {
+        "type": torch_type,
         "n_features": X.shape[1],
         "n_classes": 2,
         "state_dict": {
@@ -477,14 +476,14 @@ def export_biraffe2_mlp(
     }
 
     meta = dict(meta)
-    meta["model_name"] = "BIRAFFE2 MLP"
+    meta["model_name"] = f"BIRAFFE2 {architecture}"
     meta["family"] = "deep"
     baseline = BaselineCorrector(method="none")
 
-    # The scaler is already baked into the MLP dict, so store a disabled one.
+    # The scaler is already baked into the torch dict, so store a disabled one.
     scaler_disabled = ZStandardiser(active=False)
     _fit_and_save(
-        mlp_model,
+        torch_model,
         X,
         y,
         feature_names,
@@ -497,15 +496,53 @@ def export_biraffe2_mlp(
     )
 
 
+def export_biraffe2_mlp(
+    config_path: Path,
+    output_path: Path,
+    Xy_cache: Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray], List[str], Dict[str, Any]] | None = None,
+) -> None:
+    """Train and export the BIRAFFE2 MLP deep-learning model."""
+    _export_biraffe2_torch(config_path, output_path, "MLP", "torch_mlp", Xy_cache)
+
+
+def export_biraffe2_lstm(
+    config_path: Path,
+    output_path: Path,
+    Xy_cache: Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray], List[str], Dict[str, Any]] | None = None,
+) -> None:
+    """Train and export the BIRAFFE2 LSTM deep-learning model."""
+    _export_biraffe2_torch(config_path, output_path, "LSTM", "torch_lstm", Xy_cache)
+
+
+def export_biraffe2_cnn(
+    config_path: Path,
+    output_path: Path,
+    Xy_cache: Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray], List[str], Dict[str, Any]] | None = None,
+) -> None:
+    """Train and export the BIRAFFE2 CNN1D deep-learning model."""
+    if Xy_cache is None:
+        X_by_subject, y_by_subject, feature_names, meta = _build_biraffe2_Xy(config_path)
+    else:
+        X_by_subject, y_by_subject, feature_names, meta = Xy_cache
+    X, _, _, _, _ = _preprocess_for_training(
+        X_by_subject, y_by_subject, feature_names, meta["outlier_strategy"], meta["z_standardise"]
+    )
+    if X.shape[1] % 4 != 0:
+        raise ValueError(
+            f"BIRAFFE2 CNN1D requires a feature count divisible by 4, got {X.shape[1]}. "
+            "Disable CNN1D or change the feature set."
+        )
+    _export_biraffe2_torch(config_path, output_path, "CNN1D", "torch_cnn1d", Xy_cache)
+
+
 # ---------------------------------------------------------------------------
 # Irshad exporter
 # ---------------------------------------------------------------------------
 
-def export_irshad_rf(
+def _build_irshad_Xy(
     config_path: Path,
-    output_path: Path,
-) -> None:
-    """Train and export the Irshad/PhySF ECG-only RandomForest."""
+) -> Tuple[Dict[int, np.ndarray], Dict[int, np.ndarray], List[str], Dict[str, Any]]:
+    """Load Irshad/PhySF subjects and build window-level X, y matrices."""
     config = load_config(str(config_path))
     logger.info("Irshad config: %s", config.experiment_name)
 
@@ -556,21 +593,8 @@ def export_irshad_rf(
     if not X_by_subject:
         raise RuntimeError("No Irshad subjects produced usable features.")
 
-    X, y, outlier, scaler, feature_names = _preprocess_for_training(
-        X_by_subject,
-        y_by_subject,
-        feature_names,
-        config.preprocessing.outlier_strategy,
-        config.preprocessing.z_standardise,
-    )
-
-    model = build_classifier("RandomForest", random_state=config.seed)
-    baseline = BaselineCorrector(method="none")
-
     metadata = {
         "source": "Irshad_PhySF",
-        "model_name": "Irshad RandomForest",
-        "family": "classical",
         "experiment_name": config.experiment_name,
         "config_path": str(config_path),
         "n_subjects": len(X_by_subject),
@@ -583,8 +607,112 @@ def export_irshad_rf(
         "z_standardise": config.preprocessing.z_standardise,
         "baseline_correction": "none",
     }
+    return X_by_subject, y_by_subject, feature_names, metadata
 
-    _fit_and_save(model, X, y, feature_names, outlier, scaler, baseline, metadata, output_path)
+
+def export_irshad_classical(
+    config_path: Path,
+    output_path: Path,
+    model_name: str,
+) -> None:
+    """Train and export a classical Irshad/PhySF ECG-only model."""
+    X_by_subject, y_by_subject, feature_names, meta = _build_irshad_Xy(config_path)
+    X, y, outlier, scaler, feature_names = _preprocess_for_training(
+        X_by_subject,
+        y_by_subject,
+        feature_names,
+        meta["outlier_strategy"],
+        meta["z_standardise"],
+    )
+
+    config = load_config(str(config_path))
+    model = build_classifier(model_name, random_state=config.seed)
+    baseline = BaselineCorrector(method="none")
+
+    meta = dict(meta)
+    meta["model_name"] = f"Irshad {model_name}"
+    meta["family"] = "classical"
+    _fit_and_save(model, X, y, feature_names, outlier, scaler, baseline, meta, output_path)
+
+
+def _export_irshad_torch(
+    config_path: Path,
+    output_path: Path,
+    architecture: str,
+    torch_type: str,
+) -> None:
+    """Train and export an Irshad/PhySF deep-learning model."""
+    import torch
+
+    X_by_subject, y_by_subject, feature_names, meta = _build_irshad_Xy(config_path)
+    X, y, outlier, scaler, feature_names = _preprocess_for_training(
+        X_by_subject,
+        y_by_subject,
+        feature_names,
+        meta["outlier_strategy"],
+        meta["z_standardise"],
+    )
+
+    config = load_config(str(config_path))
+    research_model = build_deep_classifier(
+        architecture, n_features=X.shape[1], n_classes=2, random_state=config.seed
+    )
+    research_model.fit(X, y)
+    research_model.model_.to("cpu")
+
+    torch_model: Dict[str, Any] = {
+        "type": torch_type,
+        "n_features": X.shape[1],
+        "n_classes": 2,
+        "state_dict": {
+            k: v.detach().cpu().clone()
+            for k, v in research_model.model_.state_dict().items()
+        },
+        "scaler_mean": np.array(scaler.mean_) if scaler.mean_ is not None else None,
+        "scaler_std": np.array(scaler.std_) if scaler.std_ is not None else None,
+    }
+
+    meta = dict(meta)
+    meta["model_name"] = f"Irshad {architecture}"
+    meta["family"] = "deep"
+    baseline = BaselineCorrector(method="none")
+    scaler_disabled = ZStandardiser(active=False)
+    _fit_and_save(
+        torch_model,
+        X,
+        y,
+        feature_names,
+        outlier,
+        scaler_disabled,
+        baseline,
+        meta,
+        output_path,
+        pre_fitted=True,
+    )
+
+
+def export_irshad_rf(
+    config_path: Path,
+    output_path: Path,
+) -> None:
+    """Train and export the Irshad/PhySF ECG-only RandomForest."""
+    export_irshad_classical(config_path, output_path, "RandomForest")
+
+
+def export_irshad_lr(
+    config_path: Path,
+    output_path: Path,
+) -> None:
+    """Train and export the Irshad/PhySF ECG-only LogisticRegression."""
+    export_irshad_classical(config_path, output_path, "LogisticRegression")
+
+
+def export_irshad_mlp(
+    config_path: Path,
+    output_path: Path,
+) -> None:
+    """Train and export the Irshad/PhySF ECG-only MLP."""
+    _export_irshad_torch(config_path, output_path, "MLP", "torch_mlp")
 
 
 # ---------------------------------------------------------------------------
@@ -633,10 +761,22 @@ def main() -> int:
     export_biraffe2_classical(args.biraffe2_config, out / "biraffe2_svm.joblib", "SVM", biraffe2_cache)
     export_biraffe2_classical(args.biraffe2_config, out / "biraffe2_knn.joblib", "kNN", biraffe2_cache)
     export_biraffe2_classical(args.biraffe2_config, out / "biraffe2_rf.joblib", "RandomForest", biraffe2_cache)
+    export_biraffe2_classical(args.biraffe2_config, out / "biraffe2_lr.joblib", "LogisticRegression", biraffe2_cache)
     export_biraffe2_mlp(args.biraffe2_config, out / "biraffe2_mlp.joblib", biraffe2_cache)
+    export_biraffe2_lstm(args.biraffe2_config, out / "biraffe2_lstm.joblib", biraffe2_cache)
+    try:
+        export_biraffe2_cnn(args.biraffe2_config, out / "biraffe2_cnn.joblib", biraffe2_cache)
+    except ValueError as exc:
+        logger.warning("Skipping CNN1D export: %s", exc)
+    try:
+        export_biraffe2_classical(args.biraffe2_config, out / "biraffe2_xgb.joblib", "XGBoost", biraffe2_cache)
+    except ValueError as exc:
+        logger.warning("Skipping XGBoost export: %s", exc)
     export_irshad_rf(args.irshad_config, out / "irshad_rf.joblib")
+    export_irshad_lr(args.irshad_config, out / "irshad_lr.joblib")
+    export_irshad_mlp(args.irshad_config, out / "irshad_mlp.joblib")
 
-    logger.info("Phase 1.1 complete: five ECG-only models exported to %s", out.resolve())
+    logger.info("Eleven-model export complete. Bundles written to %s", out.resolve())
     return 0
 
 

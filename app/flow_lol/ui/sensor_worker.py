@@ -75,6 +75,32 @@ class SensorWorker(QThread):
         self._stop_event: Optional[asyncio.Event] = None
         self._preview_only = True
 
+    def rebuild_ensemble(self, settings: AppSettings) -> None:
+        """Rebuild the inference ensemble with the latest model selection."""
+        if self._loop is None or self._loop.is_closed():
+            return
+        self.settings = settings
+        future = asyncio.run_coroutine_threadsafe(
+            self._do_rebuild_ensemble(),
+            self._loop,
+        )
+        try:
+            future.result(timeout=10.0)
+        except Exception:
+            logger.exception("Failed to rebuild ensemble")
+
+    async def _do_rebuild_ensemble(self) -> None:
+        if self.inference is not None:
+            self.inference = InferencePipeline(
+                settings=self.settings,
+                on_prediction=self._on_prediction,
+            )
+            self.inference.load_models()
+            if not self.inference.is_ready():
+                logger.warning("Models are not ready after rebuild; predictions will be skipped")
+            else:
+                logger.info("Ensemble rebuilt with models: %s", self.inference.ensemble.enabled_names)
+
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
         asyncio.set_event_loop(self._loop)

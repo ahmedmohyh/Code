@@ -10,7 +10,11 @@ import joblib
 import numpy as np
 import torch
 
-from flow_lol.inference.mlp_model import AppMLPClassifier
+from flow_lol.inference.deep_models import (
+    AppCNN1DClassifier,
+    AppLSTMClassifier,
+    AppMLPClassifier,
+)
 from flow_lol.utils.paths import models_dir
 
 logger = logging.getLogger(__name__)
@@ -85,6 +89,12 @@ class ClassifierEnsemble:
         "biraffe2_rf",
         "irshad_rf",
         "biraffe2_mlp",
+        "biraffe2_lr",
+        "biraffe2_xgb",
+        "biraffe2_lstm",
+        "biraffe2_cnn",
+        "irshad_lr",
+        "irshad_mlp",
     )
 
     def __init__(self, enabled_names: tuple[str, ...] = ALL_MODELS) -> None:
@@ -151,22 +161,28 @@ class ClassifierEnsemble:
 
         model = bundle["model"]
 
-        # MLPs are exported as a plain dict so the bundle has no research-package
-        # dependency; reconstruct the app-side MLP here.
-        if isinstance(model, dict) and model.get("type") == "torch_mlp":
+        # Deep models are exported as plain dicts so the bundle has no research-package
+        # dependency; reconstruct the app-side classifier here.
+        if isinstance(model, dict) and model.get("type", "").startswith("torch_"):
             n_features = int(model.get("n_features", X.shape[1]))
             n_classes = int(model.get("n_classes", 2))
-            mlp = AppMLPClassifier(n_features=n_features, n_classes=n_classes, device="cpu")
-            mlp.model_.load_state_dict(model["state_dict"])
+            model_type = model.get("type")
+            if model_type == "torch_lstm":
+                clf = AppLSTMClassifier(n_features=n_features, n_classes=n_classes, device="cpu")
+            elif model_type == "torch_cnn1d":
+                clf = AppCNN1DClassifier(n_features=n_features, n_classes=n_classes, device="cpu")
+            else:
+                clf = AppMLPClassifier(n_features=n_features, n_classes=n_classes, device="cpu")
+            clf.model_.load_state_dict(model["state_dict"])
             mean = model.get("scaler_mean")
             std = model.get("scaler_std")
             if mean is not None and std is not None:
-                mlp.set_scaler(np.array(mean), np.array(std))
+                clf.set_scaler(np.array(mean), np.array(std))
 
-            label = int(mlp.predict(X)[0])
+            label = int(clf.predict(X)[0])
             proba = None
             try:
-                proba = float(mlp.predict_proba(X)[0, 1])
+                proba = float(clf.predict_proba(X)[0, 1])
             except Exception:
                 pass
             return label, proba
@@ -189,6 +205,36 @@ class ClassifierEnsemble:
                 pass
         return label, proba
 
+    @staticmethod
+    def _majority_with_tiebreak(labels: list[int], probabilities: dict[str, float | None], votes: dict[str, int]) -> tuple[int, bool, int]:
+        """Return (label, was_tie, n_for_label) using probabilities to break ties."""
+        counts = np.bincount(labels)
+        majority_label = int(counts.argmax())
+        n_for_majority = int(sum(1 for v in labels if v == majority_label))
+
+        # Check for an exact tie with the runner-up.
+        if len(counts) > 1 and counts.max() == counts[1 - majority_label]:
+            # Tie-break using mean P(flow) of models that voted each label.
+            mean_proba: dict[int, list[float]] = {0: [], 1: []}
+            for name, label in votes.items():
+                proba = probabilities.get(name)
+                if proba is not None:
+                    mean_proba[label].append(proba)
+
+            mean_0 = np.mean(mean_proba[0]) if mean_proba[0] else 0.5
+            mean_1 = np.mean(mean_proba[1]) if mean_proba[1] else 0.5
+
+            # Higher mean P(flow) means more confidence for label 1.
+            if mean_1 > mean_0:
+                return 1, True, n_for_majority
+            if mean_0 > mean_1:
+                return 0, True, n_for_majority
+
+            # Even probabilities are tied: default to 0 for safety and log later.
+            return 0, True, n_for_majority
+
+        return majority_label, False, n_for_majority
+
     def predict(self, features: dict[str, float]) -> dict[str, Any]:
         """Run all loaded models and return votes plus the hard majority label."""
         votes: dict[str, int] = {}
@@ -207,9 +253,18 @@ class ClassifierEnsemble:
             return {"error": "no model produced a vote"}
 
         labels = list(votes.values())
-        majority_label = int(np.bincount(labels).argmax())
         n_votes = len(labels)
-        n_for_majority = int(sum(1 for v in labels if v == majority_label))
+        majority_label, was_tie, n_for_majority = self._majority_with_tiebreak(
+            labels, probabilities, votes
+        )
+
+        if was_tie:
+            logger.warning(
+                "Ensemble tie detected (%s vs %s). Tie-break label=%s",
+                n_for_majority,
+                n_votes - n_for_majority,
+                majority_label,
+            )
 
         return {
             "votes": votes,
@@ -217,6 +272,7 @@ class ClassifierEnsemble:
             "ensemble_label": majority_label,
             "n_votes": n_votes,
             "n_for_majority": n_for_majority,
+            "tie_break": was_tie,
         }
 
     def is_ready(self) -> bool:

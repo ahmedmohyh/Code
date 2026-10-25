@@ -492,6 +492,9 @@ class MainWindow(QMainWindow):
             self._prediction_step_seconds = (
                 self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
             )
+            # Rebuild the inference pipeline if the model selection changed.
+            if self.worker is not None and self.worker.isRunning():
+                self.worker.rebuild_ensemble(self.settings)
             self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
             self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
             self._update_status()
@@ -981,6 +984,12 @@ class MainWindow(QMainWindow):
                 "B-RF": self.settings.use_biraffe2_rf,
                 "I-RF": self.settings.use_irshad_rf,
                 "MLP": self.settings.use_biraffe2_mlp,
+                "LR": self.settings.use_biraffe2_lr,
+                "XGB": self.settings.use_biraffe2_xgb,
+                "LSTM": self.settings.use_biraffe2_lstm,
+                "CNN": self.settings.use_biraffe2_cnn,
+                "I-LR": self.settings.use_irshad_lr,
+                "I-MLP": self.settings.use_irshad_mlp,
             }.items()
             if flag
         ]
@@ -1005,7 +1014,7 @@ class MainWindow(QMainWindow):
             self.pill_sensor.set_text("H10: idle")
             self.pill_sensor.set_active(False)
 
-        self.pill_models.set_text(f"models: {len(enabled_models)}/5")
+        self.pill_models.set_text(f"models: {len(enabled_models)}/11")
         self.pill_models.set_active(bool(enabled_models))
 
         if self._webcam_recording:

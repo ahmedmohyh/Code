@@ -80,6 +80,18 @@ class InferencePipeline:
             names.append("irshad_rf")
         if self.settings.use_biraffe2_mlp:
             names.append("biraffe2_mlp")
+        if self.settings.use_biraffe2_lr:
+            names.append("biraffe2_lr")
+        if self.settings.use_biraffe2_xgb:
+            names.append("biraffe2_xgb")
+        if self.settings.use_biraffe2_lstm:
+            names.append("biraffe2_lstm")
+        if self.settings.use_biraffe2_cnn:
+            names.append("biraffe2_cnn")
+        if self.settings.use_irshad_lr:
+            names.append("irshad_lr")
+        if self.settings.use_irshad_mlp:
+            names.append("irshad_mlp")
         return tuple(names)
 
     def load_models(self) -> None:

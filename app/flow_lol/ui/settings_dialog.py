@@ -155,6 +155,40 @@ class SettingsDialog(QDialog):
         row_layout.addWidget(switch)
         return row, switch
 
+    def _make_model_switch(
+        self,
+        icon: str,
+        title: str,
+        subtitle: str,
+        checked: bool,
+    ) -> tuple[QWidget, Switch]:
+        """Return a model row with icon, title/subtitle and a toggle switch."""
+        row = QWidget()
+        row_layout = QHBoxLayout(row)
+        row_layout.setContentsMargins(0, 0, 0, 0)
+        row_layout.setSpacing(Spacing.MD)
+
+        icon_lbl = QLabel(icon)
+        icon_lbl.setStyleSheet("font-size: 20px;")
+        icon_lbl.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        text_layout = QVBoxLayout()
+        text_layout.setContentsMargins(0, 0, 0, 0)
+        text_layout.setSpacing(2)
+        title_lbl = QLabel(f"<b>{title}</b>")
+        title_lbl.setWordWrap(True)
+        sub_lbl = QLabel(subtitle)
+        sub_lbl.setWordWrap(True)
+        sub_lbl.setProperty("role", "muted")
+        text_layout.addWidget(title_lbl)
+        text_layout.addWidget(sub_lbl)
+
+        switch = Switch(checked=checked)
+        row_layout.addWidget(icon_lbl)
+        row_layout.addLayout(text_layout, stretch=1)
+        row_layout.addWidget(switch)
+        return row, switch
+
     # ------------------------------------------------------------------
     # Tabs
     # ------------------------------------------------------------------
@@ -347,37 +381,127 @@ class SettingsDialog(QDialog):
         layout.setSpacing(Spacing.SM)
 
         intro = QLabel(
-            "Five ECG-only models vote with a hard majority. "
-            "Enable an odd number so the vote always has a winner."
+            "Up to nine ECG-only models vote with a hard majority. "
+            "Enable an odd number so the vote always has a winner. "
+            "<b>Tip:</b> if a model always votes the same way, it learned a strong bias from the "
+            "training data. Disable it and rely on the better-calibrated models."
         )
         intro.setWordWrap(True)
         intro.setProperty("role", "muted")
         layout.addWidget(intro)
 
-        svm_row, self.use_biraffe2_svm_switch = self._make_switch(
-            "BIRAFFE2 SVM (AUC 0.790)", self.settings.use_biraffe2_svm
+        legend = QLabel(
+            "<b>Legend:</b> SVM = Support Vector Machine; RF = RandomForest; kNN = k-Nearest Neighbors; "
+            "LR = LogisticRegression; MLP = Multi-Layer Perceptron; LSTM = Long Short-Term Memory; "
+            "CNN1D = 1-D Convolutional Neural Network; XGB = Extreme Gradient Boosting."
         )
-        layout.addWidget(svm_row)
+        legend.setWordWrap(True)
+        legend.setProperty("role", "muted")
+        layout.addWidget(legend)
 
-        knn_row, self.use_biraffe2_knn_switch = self._make_switch(
-            "BIRAFFE2 kNN (AUC 0.761)", self.settings.use_biraffe2_knn
-        )
-        layout.addWidget(knn_row)
+        models = [
+            (
+                "🟦",
+                "BIRAFFE2 SVM (AUC 0.790)",
+                "Support Vector Machine — best overall AUC in the pool. "
+                "Good default: finds a boundary between flow and no-flow feature clouds.",
+                "use_biraffe2_svm",
+            ),
+            (
+                "🔍",
+                "BIRAFFE2 kNN (AUC 0.761)",
+                "k-Nearest Neighbors — decides by similarity to stored training windows. "
+                "Useful when flow has very characteristic local feature patterns.",
+                "use_biraffe2_knn",
+            ),
+            (
+                "🌲",
+                "BIRAFFE2 RandomForest (AUC 0.725)",
+                "RandomForest — ensemble of decision trees. Robust to noise and gives feature importance. "
+                "A safe general-purpose choice.",
+                "use_biraffe2_rf",
+            ),
+            (
+                "🌐",
+                "Irshad RandomForest (AUC 0.692)",
+                "RandomForest trained on the Irshad/PhySF ECG-only dataset. "
+                "Lower AUC but adds cross-dataset diversity to the vote.",
+                "use_irshad_rf",
+            ),
+            (
+                "🧠",
+                "BIRAFFE2 MLP deep learning (AUC 0.730)",
+                "Multi-Layer Perceptron — small neural network. Captures non-linear feature interactions. "
+                "Fast on CPU and complements classical models.",
+                "use_biraffe2_mlp",
+            ),
+            (
+                "📈",
+                "BIRAFFE2 LogisticRegression",
+                "Linear classifier — fast, low memory, easy to interpret. "
+                "Best as a simple baseline or when you want a conservative linear boundary.",
+                "use_biraffe2_lr",
+            ),
+            (
+                "⚡",
+                "BIRAFFE2 XGBoost",
+                "Gradient-boosted trees — often the strongest tabular classifier. "
+                "Requires the xgboost package to be installed and exported.",
+                "use_biraffe2_xgb",
+            ),
+            (
+                "🔄",
+                "BIRAFFE2 LSTM deep learning",
+                "Long Short-Term Memory network — sequential model. "
+                "May help if flow has temporal structure across consecutive windows.",
+                "use_biraffe2_lstm",
+            ),
+            (
+                "🌊",
+                "BIRAFFE2 CNN1D deep learning",
+                "1-D Convolutional Neural Network — looks for local patterns across the feature vector. "
+                "Only usable if the exported feature count is divisible by 4.",
+                "use_biraffe2_cnn",
+            ),
+            (
+                "📉",
+                "Irshad LogisticRegression",
+                "Linear model trained on the Irshad/PhySF dataset. "
+                "Adds a cross-dataset linear perspective to the vote.",
+                "use_irshad_lr",
+            ),
+            (
+                "🧬",
+                "Irshad MLP deep learning",
+                "Neural network trained on the Irshad/PhySF dataset. "
+                "Adds cross-dataset deep-learning diversity to the vote.",
+                "use_irshad_mlp",
+            ),
+        ]
 
-        rf_row, self.use_biraffe2_rf_switch = self._make_switch(
-            "BIRAFFE2 RandomForest (AUC 0.725)", self.settings.use_biraffe2_rf
-        )
-        layout.addWidget(rf_row)
+        self._model_switch_map: Dict[str, Switch] = {}
+        for icon, title, subtitle, attr in models:
+            row, switch = self._make_model_switch(
+                icon,
+                title,
+                subtitle,
+                getattr(self.settings, attr),
+            )
+            self._model_switch_map[attr] = switch
+            layout.addWidget(row)
 
-        irshad_row, self.use_irshad_rf_switch = self._make_switch(
-            "Irshad RandomForest (AUC 0.692)", self.settings.use_irshad_rf
-        )
-        layout.addWidget(irshad_row)
-
-        mlp_row, self.use_biraffe2_mlp_switch = self._make_switch(
-            "BIRAFFE2 MLP deep learning (AUC 0.730)", self.settings.use_biraffe2_mlp
-        )
-        layout.addWidget(mlp_row)
+        # Expose the named switches for validation/save.
+        self.use_biraffe2_svm_switch = self._model_switch_map["use_biraffe2_svm"]
+        self.use_biraffe2_knn_switch = self._model_switch_map["use_biraffe2_knn"]
+        self.use_biraffe2_rf_switch = self._model_switch_map["use_biraffe2_rf"]
+        self.use_irshad_rf_switch = self._model_switch_map["use_irshad_rf"]
+        self.use_biraffe2_mlp_switch = self._model_switch_map["use_biraffe2_mlp"]
+        self.use_biraffe2_lr_switch = self._model_switch_map["use_biraffe2_lr"]
+        self.use_biraffe2_xgb_switch = self._model_switch_map["use_biraffe2_xgb"]
+        self.use_biraffe2_lstm_switch = self._model_switch_map["use_biraffe2_lstm"]
+        self.use_biraffe2_cnn_switch = self._model_switch_map["use_biraffe2_cnn"]
+        self.use_irshad_lr_switch = self._model_switch_map["use_irshad_lr"]
+        self.use_irshad_mlp_switch = self._model_switch_map["use_irshad_mlp"]
 
         card.content_layout().addLayout(layout)
         return card
@@ -423,13 +547,23 @@ class SettingsDialog(QDialog):
 
         self.edge_monitor_combo = QComboBox()
         self.edge_monitor_combo.addItem("Primary monitor", -1)
-        for i, screen in enumerate(QApplication.screens()):
-            geo = screen.availableGeometry()
-            self.edge_monitor_combo.addItem(
-                f"Monitor {i + 1}: {geo.width()}x{geo.height()}", i
-            )
-        current_index = self.edge_monitor_combo.findData(self.settings.screen_edge_status_monitor)
-        self.edge_monitor_combo.setCurrentIndex(max(0, current_index))
+        try:
+            screens = QApplication.screens()
+        except Exception:
+            screens = []
+        for i, screen in enumerate(screens):
+            try:
+                geo = screen.availableGeometry()
+                self.edge_monitor_combo.addItem(
+                    f"Monitor {i + 1}: {geo.width()}x{geo.height()}", i
+                )
+            except Exception:
+                continue
+        monitor_index = getattr(self.settings, "screen_edge_status_monitor", -1)
+        current_index = self.edge_monitor_combo.findData(monitor_index)
+        if current_index < 0:
+            current_index = 0
+        self.edge_monitor_combo.setCurrentIndex(current_index)
         monitor_row = QHBoxLayout()
         monitor_row.addWidget(QLabel("Edge box monitor:"))
         monitor_row.addWidget(self.edge_monitor_combo, stretch=1)
@@ -533,6 +667,12 @@ class SettingsDialog(QDialog):
             self.use_biraffe2_rf_switch.isChecked(),
             self.use_irshad_rf_switch.isChecked(),
             self.use_biraffe2_mlp_switch.isChecked(),
+            self.use_biraffe2_lr_switch.isChecked(),
+            self.use_biraffe2_xgb_switch.isChecked(),
+            self.use_biraffe2_lstm_switch.isChecked(),
+            self.use_biraffe2_cnn_switch.isChecked(),
+            self.use_irshad_lr_switch.isChecked(),
+            self.use_irshad_mlp_switch.isChecked(),
         ]
         if sum(enabled_classifiers) == 0:
             QMessageBox.warning(self, "Invalid classifiers", "Enable at least one classifier.")
@@ -544,6 +684,19 @@ class SettingsDialog(QDialog):
                 "Enable an odd number of classifiers so the majority vote always has a winner.",
             )
             return
+
+        # Warn if XGBoost is enabled but not installed; this is non-fatal because
+        # the app simply skips the missing bundle file.
+        if self.use_biraffe2_xgb_switch.isChecked():
+            try:
+                import xgboost  # noqa: F401
+            except ImportError:
+                QMessageBox.information(
+                    self,
+                    "XGBoost not installed",
+                    "XGBoost is enabled but not installed. The app will skip it unless you "
+                    "install xgboost and export the model bundle.",
+                )
 
         self.settings.use_h10 = self.use_h10_switch.isChecked()
         self.settings.h10_address = self.h10_address_edit.text().strip()
@@ -562,12 +715,21 @@ class SettingsDialog(QDialog):
         self.settings.use_biraffe2_rf = self.use_biraffe2_rf_switch.isChecked()
         self.settings.use_irshad_rf = self.use_irshad_rf_switch.isChecked()
         self.settings.use_biraffe2_mlp = self.use_biraffe2_mlp_switch.isChecked()
+        self.settings.use_biraffe2_lr = self.use_biraffe2_lr_switch.isChecked()
+        self.settings.use_biraffe2_xgb = self.use_biraffe2_xgb_switch.isChecked()
+        self.settings.use_biraffe2_lstm = self.use_biraffe2_lstm_switch.isChecked()
+        self.settings.use_biraffe2_cnn = self.use_biraffe2_cnn_switch.isChecked()
+        self.settings.use_irshad_lr = self.use_irshad_lr_switch.isChecked()
+        self.settings.use_irshad_mlp = self.use_irshad_mlp_switch.isChecked()
         self.settings.window_seconds = self.window_spin.value()
         self.settings.overlap_percent = self.overlap_spin.value()
         self.settings.notification_muting_enabled = self.mute_notifications_switch.isChecked()
         self.settings.adaptive_cues_enabled = self.adaptive_cues_switch.isChecked()
         self.settings.screen_edge_status_enabled = self.edge_status_switch.isChecked()
-        self.settings.screen_edge_status_monitor = self.edge_monitor_combo.currentData()
+        try:
+            self.settings.screen_edge_status_monitor = self.edge_monitor_combo.currentData()
+        except Exception:
+            self.settings.screen_edge_status_monitor = -1
 
         self.accept()
 
