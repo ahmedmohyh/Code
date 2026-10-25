@@ -106,6 +106,7 @@ class MainWindow(QMainWindow):
         self._create_tray_icon()
 
         # Enable the edge window if the user has it turned on in settings.
+        self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
         self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
 
         self._update_status()
@@ -152,6 +153,10 @@ class MainWindow(QMainWindow):
         edge_action.setChecked(self.settings.screen_edge_status_enabled)
         edge_action.triggered.connect(self._on_tray_edge_toggle)
         tray_menu.addAction(edge_action)
+
+        restore_edge_action = QAction("Restore edge status box", self)
+        restore_edge_action.triggered.connect(self._restore_edge_status)
+        tray_menu.addAction(restore_edge_action)
 
         tray_menu.addSeparator()
 
@@ -487,6 +492,7 @@ class MainWindow(QMainWindow):
             self._prediction_step_seconds = (
                 self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
             )
+            self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
             self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
             self._update_status()
 
@@ -771,6 +777,13 @@ class MainWindow(QMainWindow):
         self.settings.screen_edge_status_enabled = checked
         self.settings.save()
         self._edge_status.set_enabled(checked)
+
+    def _restore_edge_status(self) -> None:
+        """Force the edge status box back on top after a fullscreen game."""
+        self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
+        self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
+        self._edge_status.raise_()
+        self._edge_status.activateWindow()
 
     # ------------------------------------------------------------------
     # Worker signal handlers

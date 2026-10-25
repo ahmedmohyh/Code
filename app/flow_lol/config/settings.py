@@ -50,6 +50,7 @@ class AppSettings:
     notification_muting_enabled: bool = False
     adaptive_cues_enabled: bool = False
     screen_edge_status_enabled: bool = False
+    screen_edge_status_monitor: int = -1  # -1 = primary monitor
 
     def __post_init__(self) -> None:
         from flow_lol.utils.paths import default_data_dir

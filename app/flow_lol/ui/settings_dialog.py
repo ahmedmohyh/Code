@@ -7,6 +7,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -415,14 +416,29 @@ class SettingsDialog(QDialog):
         layout.addWidget(cues_row)
 
         edge_row, self.edge_status_switch = self._make_switch(
-            "Screen-edge status only, no in-game overlay (AF-04)",
+            "Screen-edge status box (AF-04)",
             self.settings.screen_edge_status_enabled,
         )
         layout.addWidget(edge_row)
 
+        self.edge_monitor_combo = QComboBox()
+        self.edge_monitor_combo.addItem("Primary monitor", -1)
+        for i, screen in enumerate(QApplication.screens()):
+            geo = screen.availableGeometry()
+            self.edge_monitor_combo.addItem(
+                f"Monitor {i + 1}: {geo.width()}x{geo.height()}", i
+            )
+        current_index = self.edge_monitor_combo.findData(self.settings.screen_edge_status_monitor)
+        self.edge_monitor_combo.setCurrentIndex(max(0, current_index))
+        monitor_row = QHBoxLayout()
+        monitor_row.addWidget(QLabel("Edge box monitor:"))
+        monitor_row.addWidget(self.edge_monitor_combo, stretch=1)
+        layout.addLayout(monitor_row)
+
         note = QLabel(
-            "Full disturbance-reduction features are planned for Phase 10. "
-            "Until then the app avoids in-game overlays."
+            "The edge box is a normal window, so it cannot appear on top of LoL "
+            "when LoL is in <b>exclusive fullscreen</b>. Use LoL's "
+            "<b>borderless / windowed</b> mode, or place the box on a secondary monitor."
         )
         note.setWordWrap(True)
         note.setProperty("role", "muted")
@@ -551,6 +567,7 @@ class SettingsDialog(QDialog):
         self.settings.notification_muting_enabled = self.mute_notifications_switch.isChecked()
         self.settings.adaptive_cues_enabled = self.adaptive_cues_switch.isChecked()
         self.settings.screen_edge_status_enabled = self.edge_status_switch.isChecked()
+        self.settings.screen_edge_status_monitor = self.edge_monitor_combo.currentData()
 
         self.accept()
 

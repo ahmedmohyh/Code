@@ -770,11 +770,26 @@ class DashboardWidget(QWidget):
         window_seconds = 60
         if self.settings is not None:
             window_seconds = max(1, getattr(self.settings, "window_seconds", 60))
+        # Find the match active during this prediction, if any.
+        pred_ts = prediction.get("timestamp", 0.0)
+        active_match_id: int | None = None
+        for m in self._match_rows:
+            started = m.get("started_at") or 0
+            ended = m.get("ended_at")
+            if started <= pred_ts and (ended is None or pred_ts <= ended):
+                active_match_id = m["id"]
+                break
+        game_events = (
+            self.repo.get_game_events(self._current_session_id, match_id=active_match_id)
+            if active_match_id is not None
+            else []
+        )
         dialog = PredictionInspectDialog(
             prediction=prediction,
             session_id=self._current_session_id,
             webcam_dir=self.webcam_dir,
             window_seconds=window_seconds,
+            game_events=game_events,
             parent=self,
         )
         dialog.exec()
@@ -978,6 +993,7 @@ class PredictionInspectDialog(QDialog):
         session_id: int,
         webcam_dir: Path,
         window_seconds: float = 30.0,
+        game_events: Optional[List[Dict[str, Any]]] = None,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -985,6 +1001,7 @@ class PredictionInspectDialog(QDialog):
         self.session_id = session_id
         self.webcam_dir = webcam_dir
         self._window_ms = int(window_seconds * 1000)
+        self._game_events = game_events or []
         self._video_path: Optional[Path] = None
         self._video_start_ts: Optional[float] = None
         self._auto_seek_done = False
@@ -1109,6 +1126,19 @@ class PredictionInspectDialog(QDialog):
         media_layout.addWidget(self.media_info)
 
         layout.addWidget(media_card, stretch=1)
+
+        # Game events around prediction ---------------------------------------
+        events_card = CardWidget("Game events around prediction")
+        events_layout = events_card.content_layout()
+        events_layout.setSpacing(Spacing.SM)
+
+        self.events_around_list = QListWidget()
+        self.events_around_list.setAlternatingRowColors(True)
+        self.events_around_list.setMinimumHeight(80)
+        self.events_around_list.setMaximumHeight(140)
+        self._populate_events_around(pred_ts)
+        events_layout.addWidget(self.events_around_list)
+        layout.addWidget(events_card)
 
         # Snapshots gallery ---------------------------------------------------
         snapshots_card = CardWidget("Snapshots around prediction")
@@ -1298,8 +1328,37 @@ class PredictionInspectDialog(QDialog):
         self._time_label.setText(f"{self._format_ms(position)} / {self._format_ms(duration)}")
 
     # ------------------------------------------------------------------
-    # Snapshots
+    # Game events
     # ------------------------------------------------------------------
+
+    def _populate_events_around(self, ts: float) -> None:
+        """List game events whose timestamp falls inside the prediction window."""
+        self.events_around_list.clear()
+        half_window = (self._window_ms / 1000.0) / 2.0
+        start_ts = ts - half_window
+        end_ts = ts + half_window
+        shown = 0
+        for e in self._game_events:
+            et = e.get("timestamp")
+            if et is None or et < start_ts or et > end_ts:
+                continue
+            t = datetime.fromtimestamp(et).strftime("%H:%M:%S")
+            actor = e.get("actor") or "?"
+            target = e.get("target") or ""
+            etype = e.get("event_type", "event")
+            desc = f"{t} – {etype}"
+            if target:
+                desc += f": {actor} → {target}"
+            else:
+                desc += f": {actor}"
+            self.events_around_list.addItem(desc)
+            shown += 1
+        if shown == 0:
+            self.events_around_list.addItem("No game events in this prediction window")
+
+    # ------------------------------------------------------------------
+    # Snapshots
+    # ----------------------------------------------------------------
 
     def _populate_snapshots(self, ts: float) -> None:
         self.snap_gallery.clear()

@@ -1,13 +1,17 @@
 """Screen-edge status indicator for Flow-LoL.
 
-A small always-on-top box in the top-right corner of the primary monitor shows
+A small always-on-top box in the top-right corner of the selected monitor shows
 the latest flow prediction and key session statuses. It is designed to stay
 visible when the main app is minimized.
+
+Note: League of Legends in exclusive fullscreen will cover every normal window,
+including this one. Use borderless/windowed mode or place the box on a secondary
+monitor if you want it visible while playing.
 """
 
 from __future__ import annotations
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QFont
 from PyQt6.QtWidgets import QApplication, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
@@ -15,7 +19,7 @@ from flow_lol.ui.styles import Colors, Fonts
 
 
 class EdgeStatusWindow(QWidget):
-    """Floating box in the top-right corner showing flow + sensor + game + webcam status."""
+    """Floating box showing flow + sensor + game + webcam status."""
 
     WIDTH = 220
     HEIGHT = 130
@@ -69,19 +73,42 @@ class EdgeStatusWindow(QWidget):
         self._detail.setWordWrap(True)
         layout.addWidget(self._detail)
 
-        self._position_on_screen()
         self._enabled = False
+        self._screen_index = -1
         self.hide()
 
+        # Aggressively restore visibility after a fullscreen game (e.g. LoL)
+        # releases the display. This timer is cheap when the window is already OK.
+        self._restore_timer = QTimer(self)
+        self._restore_timer.timeout.connect(self._restore_if_needed)
+        self._restore_timer.start(1000)
+
+    def _screen(self) -> object | None:
+        """Return the QScreen to use, or primary screen if index is invalid."""
+        screens = QApplication.screens()
+        if not screens:
+            return None
+        if 0 <= self._screen_index < len(screens):
+            return screens[self._screen_index]
+        return QApplication.primaryScreen()
+
     def _position_on_screen(self) -> None:
-        screen = QApplication.primaryScreen()
-        if screen is not None:
-            geo = screen.availableGeometry()
-            x = geo.x() + geo.width() - self.WIDTH - 12
-            y = geo.y() + 12
-            self.setGeometry(x, y, self.WIDTH, self.HEIGHT)
-        else:
+        screen = self._screen()
+        if screen is None:
             self.setGeometry(1668, 12, self.WIDTH, self.HEIGHT)
+            return
+        geo = screen.availableGeometry()
+        x = geo.x() + geo.width() - self.WIDTH - 12
+        y = geo.y() + 12
+        self.setGeometry(x, y, self.WIDTH, self.HEIGHT)
+
+    def set_screen_index(self, index: int) -> None:
+        """Place the box on the given monitor (-1 means primary)."""
+        self._screen_index = index
+        if self._enabled:
+            self._position_on_screen()
+            self.show()
+            self.raise_()
 
     def set_enabled(self, enabled: bool) -> None:
         """Show or hide the edge window."""
@@ -89,8 +116,18 @@ class EdgeStatusWindow(QWidget):
         if enabled:
             self._position_on_screen()
             self.show()
+            self.raise_()
         else:
             self.hide()
+
+    def _restore_if_needed(self) -> None:
+        if not self._enabled:
+            return
+        if not self.isVisible():
+            self._position_on_screen()
+            self.show()
+            self.raise_()
+            self.activateWindow()
 
     def update_state(self, label: int) -> None:
         """Update the box color and text based on the latest prediction label."""
