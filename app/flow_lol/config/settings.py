@@ -55,6 +55,7 @@ class AppSettings:
     # Interventions
     notification_muting_enabled: bool = False
     adaptive_cues_enabled: bool = False
+    adaptive_volume_percent: int = 30  # target volume while in flow
     screen_edge_status_enabled: bool = False
     screen_edge_status_monitor: int = -1  # -1 = primary monitor
 

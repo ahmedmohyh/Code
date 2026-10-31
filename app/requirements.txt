@@ -33,5 +33,8 @@ python-dateutil>=2.8.0
 appdirs>=1.4.4
 psutil>=5.9.0
 
+# Interventions
+pycaw>=20230426
+
 # Packaging (development only)
 pyinstaller>=6.0.0

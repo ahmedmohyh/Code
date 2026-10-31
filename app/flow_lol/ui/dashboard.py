@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 import os
 
 from PyQt6.QtCore import QPoint, QSize, Qt, QUrl, pyqtSignal
-from PyQt6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap, QPolygon
+from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygon
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
 from PyQt6.QtWidgets import (
@@ -56,6 +56,7 @@ class FlowTimelineWidget(QWidget):
     MODE_BLOCKS = "blocks"
     MODE_LINE = "line"
     MODE_SCATTER = "scatter"
+    MODE_DISTRIBUTION = "distribution"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -69,13 +70,20 @@ class FlowTimelineWidget(QWidget):
         self._t_max = 1.0
         self._mouse_x: Optional[int] = None
         self._hover_pred: Optional[Dict[str, Any]] = None
-        self.setMinimumHeight(200)
+        self.setMinimumHeight(240)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def set_mode(self, mode: str) -> None:
-        self.mode = mode if mode in (self.MODE_TIMELINE, self.MODE_BLOCKS, self.MODE_LINE, self.MODE_SCATTER) else self.MODE_TIMELINE
+        allowed = (
+            self.MODE_TIMELINE,
+            self.MODE_BLOCKS,
+            self.MODE_LINE,
+            self.MODE_SCATTER,
+            self.MODE_DISTRIBUTION,
+        )
+        self.mode = mode if mode in allowed else self.MODE_TIMELINE
         self.update()
 
     def set_data(
@@ -166,6 +174,8 @@ class FlowTimelineWidget(QWidget):
             self._draw_line(painter, plot_w, plot_h, t_min, t_max)
         elif self.mode == self.MODE_SCATTER:
             self._draw_scatter(painter, plot_w, plot_h, t_min, t_max)
+        elif self.mode == self.MODE_DISTRIBUTION:
+            self._draw_distribution(painter, plot_w, plot_h, t_min, t_max)
 
         self._draw_axis_and_events(painter, plot_w, plot_h, t_min, t_max)
         self._draw_selection(painter, plot_w, plot_h, t_min, t_max)
@@ -308,6 +318,64 @@ class FlowTimelineWidget(QWidget):
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(color)
             painter.drawEllipse(int(x - 5), int(y - 5), 10, 10)
+
+    def _draw_distribution(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+        t_min: float,
+        t_max: float,
+    ) -> None:
+        """Smooth "flow intensity" curve over time, like a continuous distribution.
+
+        Each match becomes a hill-shaped flow profile so non-experts can read
+        "high = more flow, low = less flow" and see kills/objectives overlaid.
+        """
+        self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
+        if not self.predictions:
+            return
+
+        sorted_preds = sorted(self.predictions, key=lambda p: p["timestamp"])
+        times = [p["timestamp"] for p in sorted_preds]
+        labels = [float(p.get("ensemble_label", 0)) for p in sorted_preds]
+        duration = max(t_max - t_min, 1.0)
+        # Adaptive bandwidth: about 10% of the session length, at least one window step.
+        bandwidth = max(duration * 0.10, (times[1] - times[0]) if len(times) > 1 else 30.0)
+
+        path = QPainterPath()
+        first_point = True
+        for px in range(int(self.PADDING_LEFT), int(self.width() - self.PADDING_RIGHT) + 1):
+            t = self._t_from_x(px, t_min, t_max, plot_w)
+            num = 0.0
+            den = 0.0
+            for ti, li in zip(times, labels):
+                dt = (t - ti) / bandwidth
+                w = 2.718281828 ** (-0.5 * dt * dt)
+                num += w * li
+                den += w
+            intensity = num / den if den > 0 else 0.0
+            y = self.PADDING_TOP + (1.0 - intensity) * plot_h
+            if first_point:
+                path.moveTo(float(px), y)
+                first_point = False
+            else:
+                path.lineTo(float(px), y)
+
+        # Fill the area under the curve with a translucent flow colour.
+        fill_path = QPainterPath(path)
+        fill_path.lineTo(self.width() - self.PADDING_RIGHT, self.PADDING_TOP + plot_h)
+        fill_path.lineTo(self.PADDING_LEFT, self.PADDING_TOP + plot_h)
+        fill_path.closeSubpath()
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(Colors.FLOW).lighter(120))
+        painter.setOpacity(0.35)
+        painter.drawPath(fill_path)
+        painter.setOpacity(1.0)
+
+        painter.setPen(QPen(QColor(Colors.FLOW), 2))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
 
     def _draw_axis_and_events(
         self,
@@ -532,6 +600,7 @@ class DashboardWidget(QWidget):
         self.view_combo.addItem("Blocks", FlowTimelineWidget.MODE_BLOCKS)
         self.view_combo.addItem("Line graph", FlowTimelineWidget.MODE_LINE)
         self.view_combo.addItem("Scatter", FlowTimelineWidget.MODE_SCATTER)
+        self.view_combo.addItem("Flow distribution", FlowTimelineWidget.MODE_DISTRIBUTION)
         self.view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
         view_row.addWidget(self.view_combo)
         view_row.addStretch()

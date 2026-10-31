@@ -26,6 +26,7 @@ from PyQt6.QtWidgets import (
 )
 
 from flow_lol.config.settings import AppSettings
+from flow_lol.interventions import InterventionManager
 from flow_lol.ui.components import (
     CardWidget,
     CompactActionBar,
@@ -84,6 +85,9 @@ class MainWindow(QMainWindow):
         self._client_phase = "None"
         self._is_shutting_down = False
         self._webcam_check_worker: Optional[QThread] = None
+
+        # Real-time interventions (notification muting + adaptive volume).
+        self._intervention_manager = InterventionManager(self.settings)
 
         # Screen-edge status indicator (floating box in top-right corner).
         self._edge_status = EdgeStatusWindow()
@@ -605,6 +609,7 @@ class MainWindow(QMainWindow):
 
     def _on_session_state_changed(self, active: bool) -> None:
         self._session_active = active
+        self._intervention_manager.on_session_state_changed(active)
         if not active:
             self._in_match = False
             self._webcam_recording = False
@@ -710,6 +715,9 @@ class MainWindow(QMainWindow):
         """Stop all background threads and clean up resources."""
         if self._tray_icon is not None:
             self._tray_icon.hide()
+
+        # Restore volume / notifications before anything else stops.
+        self._intervention_manager.shutdown()
 
         if self.worker is not None:
             try:
@@ -853,6 +861,7 @@ class MainWindow(QMainWindow):
         self.prediction_progress.setFormat("0 s")
         self._edge_status.update_state(label)
         self._edge_status.set_detail(f"Prediction #{self._prediction_count}")
+        self._intervention_manager.on_prediction(pred)
 
     def _tick_prediction_progress(self) -> None:
         import time

@@ -520,24 +520,39 @@ class SettingsDialog(QDialog):
         layout.addWidget(intro)
 
         mute_row, self.mute_notifications_switch = self._make_switch(
-            "Mute system notifications during flow (Phase 10) — not yet implemented",
+            "Mute system notifications during flow (AF-02)",
             self.settings.notification_muting_enabled,
         )
-        self.mute_notifications_switch.setEnabled(False)
         mute_lbl = mute_row.findChild(QLabel)
         if mute_lbl is not None:
-            mute_lbl.setToolTip("This feature will be enabled once Phase 10 is implemented.")
+            mute_lbl.setToolTip(
+                "Best-effort Windows Do-Not-Disturb toggle while a flow state is detected. "
+                "If it has no effect on your Windows build, enable Focus Assist manually."
+            )
         layout.addWidget(mute_row)
 
         cues_row, self.adaptive_cues_switch = self._make_switch(
-            "Adaptive audio / lighting cues (Phase 10) — not yet implemented",
+            "Lower system volume during flow (adaptive audio cue)",
             self.settings.adaptive_cues_enabled,
         )
-        self.adaptive_cues_switch.setEnabled(False)
         cues_lbl = cues_row.findChild(QLabel)
         if cues_lbl is not None:
-            cues_lbl.setToolTip("This feature will be enabled once Phase 10 is implemented.")
+            cues_lbl.setToolTip(
+                "Reduces the Windows master volume while you are in flow, "
+                "then restores it when flow ends or the session stops."
+            )
         layout.addWidget(cues_row)
+
+        self.volume_spin = QSpinBox()
+        self.volume_spin.setRange(0, 100)
+        self.volume_spin.setSuffix("%")
+        self.volume_spin.setValue(self.settings.adaptive_volume_percent)
+        self.volume_spin.setToolTip("Target master volume while in flow")
+        volume_row = QHBoxLayout()
+        volume_row.addWidget(QLabel("Flow volume level:"))
+        volume_row.addWidget(self.volume_spin)
+        volume_row.addStretch()
+        layout.addLayout(volume_row)
 
         edge_row, self.edge_status_switch = self._make_switch(
             "Screen-edge status box (AF-04)",
@@ -725,6 +740,7 @@ class SettingsDialog(QDialog):
         self.settings.overlap_percent = self.overlap_spin.value()
         self.settings.notification_muting_enabled = self.mute_notifications_switch.isChecked()
         self.settings.adaptive_cues_enabled = self.adaptive_cues_switch.isChecked()
+        self.settings.adaptive_volume_percent = self.volume_spin.value()
         self.settings.screen_edge_status_enabled = self.edge_status_switch.isChecked()
         try:
             self.settings.screen_edge_status_monitor = self.edge_monitor_combo.currentData()

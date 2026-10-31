@@ -54,6 +54,9 @@ pyinstaller ^
   --collect-all torch ^
   --collect-all sqlalchemy ^
   --collect-all polar_python ^
+  --collect-all pycaw ^
+  --hidden-import pycaw.pycaw ^
+  --hidden-import comtypes ^
   --hidden-import scipy.special ^
   --hidden-import sklearn.utils._typedefs ^
   --hidden-import sklearn.neighbors._partition_nodes ^
