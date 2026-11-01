@@ -492,32 +492,61 @@ class MainWindow(QMainWindow):
             return
         if not accepted:
             return
+        self._apply_settings_after_dialog(dialog.settings)
+
+    def _apply_settings_after_dialog(self, new_settings: AppSettings) -> None:
+        """Apply settings in small delayed chunks so the dialog is fully gone first.
+
+        PyInstaller onefile builds occasionally crash during heavy work that runs
+        synchronously while a modal dialog is still closing. Deferring the work
+        lets Qt finish the dialog lifecycle first.
+        """
         try:
-            self.settings = dialog.settings
+            self.settings = new_settings
             self.settings.save()
             logger.info("Settings updated")
-            self.logs.set_logs_dir(Path(self.settings.logs_save_path))
-            self.webcam.webcam_dir = Path(self.settings.webcam_save_path)
-            self.webcam.refresh_list()
-            self.dashboard.webcam_dir = Path(self.settings.webcam_save_path)
-            self._prediction_step_seconds = (
-                self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
-            )
-            # Rebuild the inference pipeline in the background if the model
-            # selection changed, so the UI does not freeze after closing Settings.
-            if self.worker is not None and self.worker.isRunning():
-                try:
-                    self.worker.rebuild_ensemble(self.settings)
-                except Exception as exc:
-                    logger.exception("Failed to rebuild ensemble after settings change: %s", exc)
+        except Exception as exc:
+            logger.exception("Failed to save settings: %s", exc)
+            return
+
+        def _apply_paths_and_ui():
+            try:
+                self.logs.set_logs_dir(Path(self.settings.logs_save_path))
+                self.webcam.webcam_dir = Path(self.settings.webcam_save_path)
+                self.webcam.refresh_list()
+                self.dashboard.webcam_dir = Path(self.settings.webcam_save_path)
+                self._prediction_step_seconds = (
+                    self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
+                )
+            except Exception as exc:
+                logger.exception("Failed to apply path/ui settings: %s", exc)
+
+        def _apply_edge_status():
             try:
                 self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
                 self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
             except Exception as exc:
                 logger.exception("Failed to update edge status after settings change: %s", exc)
-            self._update_status()
-        except Exception as exc:
-            logger.exception("Failed to apply settings: %s", exc)
+
+        def _rebuild_ensemble():
+            if self.worker is not None and self.worker.isRunning():
+                try:
+                    self.worker.rebuild_ensemble(self.settings)
+                except Exception as exc:
+                    logger.exception("Failed to rebuild ensemble after settings change: %s", exc)
+
+        def _finalize():
+            try:
+                self._update_status()
+            except Exception as exc:
+                logger.exception("Failed to update status bar: %s", exc)
+
+        # 0 ms timers still process Qt events before running the slots, so each
+        # block executes only after the dialog close has finished processing.
+        QTimer.singleShot(0, _apply_paths_and_ui)
+        QTimer.singleShot(0, _apply_edge_status)
+        QTimer.singleShot(50, _rebuild_ensemble)
+        QTimer.singleShot(100, _finalize)
 
     # ------------------------------------------------------------------
     # Session / match / webcam actions
