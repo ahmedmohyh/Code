@@ -20,8 +20,33 @@ from flow_lol.utils.paths import ensure_directories
 from flow_lol.webcam.migrate import migrate_legacy_webcam_layout
 
 
+def _xgboost_available() -> bool:
+    """Check whether XGBoost can really be imported (DLL present)."""
+    try:
+        import xgboost  # noqa: F401
+        return True
+    except Exception:
+        return False
+
+
+def _disable_xgboost_in_frozen(settings: AppSettings) -> None:
+    """Auto-disable XGBoost in deployed builds if the native DLL is missing."""
+    if not getattr(sys, "frozen", False):
+        return
+    if not settings.use_biraffe2_xgb:
+        return
+    if _xgboost_available():
+        return
+    settings.use_biraffe2_xgb = False
+    try:
+        settings.save()
+    except Exception:
+        pass
+
+
 def main() -> int:
     settings = AppSettings.load()
+    _disable_xgboost_in_frozen(settings)
     settings.save()  # write back with any missing defaults
 
     app_logging.setup_logging(logs_dir=settings.logs_save_path)
