@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import shutil
 from pathlib import Path
 
@@ -28,6 +29,8 @@ from flow_lol.sensors.scanner import PolarScanner
 from flow_lol.ui.components import CardWidget, Switch
 from flow_lol.ui.styles import Colors, Spacing
 
+
+logger = logging.getLogger(__name__)
 
 def _style_primary_button(btn: QPushButton) -> None:
     """Apply a highly-readable primary style directly so it overrides native styles.
@@ -135,7 +138,7 @@ class SettingsDialog(QDialog):
                 """
             )
         buttons.accepted.connect(self._validate_and_accept)
-        buttons.rejected.connect(self.reject)
+        buttons.rejected.connect(self._on_reject)
 
         layout = QVBoxLayout(self)
         layout.setSpacing(Spacing.LG)
@@ -671,7 +674,12 @@ class SettingsDialog(QDialog):
         if path:
             self.replay_path_edit.setText(path)
 
+    def _on_reject(self) -> None:
+        logger.info("Settings dialog cancelled by user")
+        self.reject()
+
     def _validate_and_accept(self) -> None:
+        logger.info("Settings Save button clicked; validating")
         if not self.use_h10_switch.isChecked():
             QMessageBox.warning(self, "Invalid sensors", "Enable the Polar H10 sensor.")
             return
@@ -699,19 +707,6 @@ class SettingsDialog(QDialog):
                 "Enable an odd number of classifiers so the majority vote always has a winner.",
             )
             return
-
-        # Warn if XGBoost is enabled but not installed; this is non-fatal because
-        # the app simply skips the missing bundle file.
-        if self.use_biraffe2_xgb_switch.isChecked():
-            try:
-                import xgboost  # noqa: F401
-            except ImportError:
-                QMessageBox.information(
-                    self,
-                    "XGBoost not installed",
-                    "XGBoost is enabled but not installed. The app will skip it unless you "
-                    "install xgboost and export the model bundle.",
-                )
 
         self.settings.use_h10 = self.use_h10_switch.isChecked()
         self.settings.h10_address = self.h10_address_edit.text().strip()
@@ -747,6 +742,7 @@ class SettingsDialog(QDialog):
         except Exception:
             self.settings.screen_edge_status_monitor = -1
 
+        logger.info("Settings validation passed; accepting dialog")
         self.accept()
 
     def _delete_all_local_data(self) -> None:
