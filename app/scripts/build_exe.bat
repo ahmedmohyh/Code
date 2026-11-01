@@ -55,8 +55,22 @@ pyinstaller ^
   --collect-all sqlalchemy ^
   --collect-all polar_python ^
   --collect-all pycaw ^
+  --hidden-import pycaw ^
   --hidden-import pycaw.pycaw ^
+  --hidden-import pycaw.api ^
+  --hidden-import pycaw.constants ^
+  --hidden-import pycaw.mic ^
   --hidden-import comtypes ^
+  --hidden-import comtypes.client ^
+  --hidden-import comtypes.client.dynamic ^
+  --hidden-import comtypes.stream ^
+  --hidden-import comtypes.automation ^
+  --hidden-import comtypes.typeinfo ^
+  --hidden-import comtypes.GUID ^
+  --hidden-import comtypes.persist ^
+  --hidden-import comtypes.gen ^
+  --hidden-import comtypes._meta ^
+  --hidden-import comtypes.tools ^
   --hidden-import scipy.special ^
   --hidden-import sklearn.utils._typedefs ^
   --hidden-import sklearn.neighbors._partition_nodes ^

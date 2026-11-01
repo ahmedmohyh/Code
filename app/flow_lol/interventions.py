@@ -19,6 +19,35 @@ from flow_lol.config.settings import AppSettings
 logger = logging.getLogger(__name__)
 
 
+def _try_import_pycaw():
+    """Import pycaw classes with heavy defensiveness for deployment edge cases."""
+    try:
+        # comtypes generates wrapper modules on first use. In a PyInstaller
+        # onefile bundle the default gen_dir may not be writable, so point it
+        # to the user's temp directory before any COM interface is activated.
+        try:
+            import tempfile
+            import comtypes.client
+
+            comtypes.client.gen_dir = tempfile.gettempdir()
+        except Exception as gen_exc:
+            logger.debug("Could not set comtypes gen_dir: %s", gen_exc)
+
+        # pycaw >= 20260927 may expose the public API directly under pycaw.
+        from pycaw import AudioUtilities, IAudioEndpointVolume
+        logger.debug("Using pycaw direct import")
+        return AudioUtilities, IAudioEndpointVolume
+    except Exception as first_exc:
+        logger.debug("pycaw direct import failed: %s", first_exc)
+    try:
+        from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+        logger.debug("Using pycaw.pycaw import")
+        return AudioUtilities, IAudioEndpointVolume
+    except Exception as second_exc:
+        logger.debug("pycaw.pycaw import failed: %s", second_exc)
+    return None, None
+
+
 class VolumeController:
     """Adjust the system master volume using the Core Audio API (pycaw)."""
 
@@ -26,14 +55,35 @@ class VolumeController:
         self._available = False
         self._volume: Optional[object] = None
         try:
-            from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+            AudioUtilities, IAudioEndpointVolume = _try_import_pycaw()
+            if AudioUtilities is None or IAudioEndpointVolume is None:
+                raise RuntimeError("pycaw is not installed or has an incompatible version")
 
             devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, 0, None)
+            if devices is None:
+                raise RuntimeError("pycaw AudioUtilities.GetSpeakers() returned None")
+
+            # pycaw versions differ in what GetSpeakers() returns:
+            #   - older: an IMMDevice with `.Activate()`
+            #   - newer: an `AudioDevice` wrapper whose raw COM device is `._dev`
+            if hasattr(devices, "_dev"):
+                device = devices._dev
+                logger.debug("Using pycaw AudioDevice._dev wrapper")
+            elif hasattr(devices, "Activate"):
+                device = devices
+                logger.debug("Using pycaw IMMDevice directly")
+            else:
+                raise RuntimeError(
+                    "pycaw AudioUtilities.GetSpeakers() returned an unsupported object: %r",
+                    devices,
+                )
+            interface = device.Activate(IAudioEndpointVolume._iid_, 0, None)
             self._volume = interface.QueryInterface(IAudioEndpointVolume)
             self._available = True
+            logger.info("Volume control initialized")
         except Exception as exc:
-            logger.warning("Volume control unavailable (install pycaw to enable): %s", exc)
+            logger.warning("Volume control unavailable: %s", exc)
+            self._available = False
 
     def get_volume(self) -> float:
         """Return current master volume in [0.0, 1.0]."""
@@ -154,11 +204,14 @@ class InterventionManager:
             self.settings.notification_muting_enabled or self.settings.adaptive_cues_enabled
         ):
             return
-        label = prediction_dict.get("ensemble_label", 0)
-        if label == 1 and not self._flow_active:
-            self._enter_flow()
-        elif label == 0 and self._flow_active:
-            self._exit_flow()
+        try:
+            label = prediction_dict.get("ensemble_label", 0)
+            if label == 1 and not self._flow_active:
+                self._enter_flow()
+            elif label == 0 and self._flow_active:
+                self._exit_flow()
+        except Exception as exc:
+            logger.exception("Failed to apply intervention for prediction: %s", exc)
 
     def _enter_flow(self) -> None:
         self._flow_active = True
@@ -177,11 +230,14 @@ class InterventionManager:
         self._restore_all()
 
     def _restore_all(self) -> None:
-        if self._original_volume is not None:
-            self._volume.set_volume(self._original_volume)
-            logger.info("Adaptive volume: restored to %.0f%%", self._original_volume * 100)
-            self._original_volume = None
-        self._notifications.unmute()
+        try:
+            if self._original_volume is not None:
+                self._volume.set_volume(self._original_volume)
+                logger.info("Adaptive volume: restored to %.0f%%", self._original_volume * 100)
+                self._original_volume = None
+            self._notifications.unmute()
+        except Exception as exc:
+            logger.exception("Failed to restore interventions: %s", exc)
 
     def shutdown(self) -> None:
         """Force restore everything before app exit."""

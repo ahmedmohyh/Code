@@ -484,8 +484,15 @@ class MainWindow(QMainWindow):
         if self._session_active:
             self._status_label.setText("Stop the recording session before changing settings.")
             return
-        dialog = SettingsDialog(self.settings, self)
-        if dialog.exec():
+        try:
+            dialog = SettingsDialog(self.settings, self)
+            accepted = dialog.exec()
+        except Exception as exc:
+            logger.exception("Settings dialog failed: %s", exc)
+            return
+        if not accepted:
+            return
+        try:
             self.settings = dialog.settings
             self.settings.save()
             logger.info("Settings updated")
@@ -496,12 +503,21 @@ class MainWindow(QMainWindow):
             self._prediction_step_seconds = (
                 self.settings.window_seconds * (100 - self.settings.overlap_percent) / 100.0
             )
-            # Rebuild the inference pipeline if the model selection changed.
+            # Rebuild the inference pipeline in the background if the model
+            # selection changed, so the UI does not freeze after closing Settings.
             if self.worker is not None and self.worker.isRunning():
-                self.worker.rebuild_ensemble(self.settings)
-            self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
-            self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
+                try:
+                    self.worker.rebuild_ensemble(self.settings)
+                except Exception as exc:
+                    logger.exception("Failed to rebuild ensemble after settings change: %s", exc)
+            try:
+                self._edge_status.set_screen_index(self.settings.screen_edge_status_monitor)
+                self._edge_status.set_enabled(self.settings.screen_edge_status_enabled)
+            except Exception as exc:
+                logger.exception("Failed to update edge status after settings change: %s", exc)
             self._update_status()
+        except Exception as exc:
+            logger.exception("Failed to apply settings: %s", exc)
 
     # ------------------------------------------------------------------
     # Session / match / webcam actions
@@ -752,25 +768,15 @@ class MainWindow(QMainWindow):
         self.settings.save()
 
     def closeEvent(self, event: object) -> None:
-        """Minimize to tray on X; full shutdown only when _safe_exit is used."""
+        """Minimize normally on X; full shutdown only when _safe_exit is used."""
         if self._is_shutting_down:
             self._do_full_shutdown()
             event.accept()
             return
 
-        if self._tray_icon is not None and self._tray_icon.isVisible():
-            self.hide()
-            self._tray_icon.showMessage(
-                "Flow-LoL",
-                "App is running in the system tray. Click the tray icon to restore.",
-                QSystemTrayIcon.MessageIcon.Information,
-                2000,
-            )
-            event.ignore()
-            return
-
+        # Keep the app visible in the main taskbar as a normal minimized window.
+        self.showMinimized()
         event.ignore()
-        self._safe_exit()
 
     def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
         """Restore the main window when the tray icon is activated."""

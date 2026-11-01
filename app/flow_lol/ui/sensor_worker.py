@@ -76,30 +76,40 @@ class SensorWorker(QThread):
         self._preview_only = True
 
     def rebuild_ensemble(self, settings: AppSettings) -> None:
-        """Rebuild the inference ensemble with the latest model selection."""
+        """Rebuild the inference ensemble with the latest model selection (non-blocking)."""
         if self._loop is None or self._loop.is_closed():
             return
         self.settings = settings
+
+        def _on_done(fut: asyncio.Future) -> None:
+            try:
+                fut.result()
+            except Exception:
+                logger.exception("Failed to rebuild ensemble")
+
         future = asyncio.run_coroutine_threadsafe(
             self._do_rebuild_ensemble(),
             self._loop,
         )
-        try:
-            future.result(timeout=10.0)
-        except Exception:
-            logger.exception("Failed to rebuild ensemble")
+        future.add_done_callback(_on_done)
 
     async def _do_rebuild_ensemble(self) -> None:
-        if self.inference is not None:
+        if self.inference is None:
+            return
+        logger.info("Rebuilding inference ensemble...")
+        try:
             self.inference = InferencePipeline(
                 settings=self.settings,
                 on_prediction=self._on_prediction,
             )
             self.inference.load_models()
-            if not self.inference.is_ready():
-                logger.warning("Models are not ready after rebuild; predictions will be skipped")
-            else:
-                logger.info("Ensemble rebuilt with models: %s", self.inference.ensemble.enabled_names)
+        except Exception as exc:
+            logger.exception("Ensemble rebuild raised an exception: %s", exc)
+            return
+        if not self.inference.is_ready():
+            logger.warning("Models are not ready after rebuild; predictions will be skipped")
+        else:
+            logger.info("Ensemble rebuilt with models: %s", self.inference.ensemble.enabled_names)
 
     def run(self) -> None:
         self._loop = asyncio.new_event_loop()
