@@ -109,7 +109,16 @@ class ClassifierEnsemble:
             if not path.exists():
                 logger.warning("Model file not found: %s", path)
                 continue
-            bundle = joblib.load(path)
+            try:
+                bundle = joblib.load(path)
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load model %s from %s: %s. Skipping it.",
+                    name,
+                    path,
+                    exc,
+                )
+                continue
             self.bundles[name] = bundle
             fnames = bundle.get("feature_names", [])
             if not self.feature_names and fnames:
