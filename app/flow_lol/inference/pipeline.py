@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from typing import Callable, Dict, List, Optional
 
 from flow_lol.config.settings import AppSettings
@@ -11,6 +12,15 @@ from flow_lol.inference.feature_extract import FeaturePipeline
 from flow_lol.sensors.buffer import ECGBuffer, ECGSample
 
 logger = logging.getLogger(__name__)
+
+
+def _xgboost_available() -> bool:
+    """Check whether XGBoost can really be imported (native DLL present)."""
+    try:
+        import xgboost  # noqa: F401
+        return True
+    except Exception:
+        return False
 
 
 class Prediction:
@@ -83,7 +93,12 @@ class InferencePipeline:
         if self.settings.use_biraffe2_lr:
             names.append("biraffe2_lr")
         if self.settings.use_biraffe2_xgb:
-            names.append("biraffe2_xgb")
+            if not getattr(sys, "frozen", False) or _xgboost_available():
+                names.append("biraffe2_xgb")
+            else:
+                logger.warning(
+                    "XGBoost disabled in deployed build: native library is not bundled"
+                )
         if self.settings.use_biraffe2_lstm:
             names.append("biraffe2_lstm")
         if self.settings.use_biraffe2_cnn:
