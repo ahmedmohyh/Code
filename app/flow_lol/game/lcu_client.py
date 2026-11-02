@@ -24,14 +24,16 @@ import aiohttp
 logger = logging.getLogger(__name__)
 
 # Common Windows locations for the League Client lockfile.
-# The Riot Client lockfile must come LAST because it exposes a different API
-# and will otherwise make every LCU request return 404.
+# The Riot Client lockfile must come LAST (or be skipped) because it exposes a
+# different API and will otherwise make every LCU request return 404.
 _LOCKFILE_CANDIDATES: List[Callable[[], Path | None]] = [
     lambda: Path("C:/Riot Games/League of Legends/lockfile"),
-    lambda: _local_appdata_path("League of Legends", "lockfile"),
     lambda: _local_appdata_path("Riot Games", "League of Legends", "lockfile"),
-    lambda: _local_appdata_path("Riot Games", "Riot Client", "Config", "lockfile"),
+    lambda: _local_appdata_path("League of Legends", "lockfile"),
 ]
+
+# Paths that are known to belong to the Riot launcher, not the game client.
+_RIOT_CLIENT_ONLY_NAMES = ("Riot Client", "Riot Client.exe")
 
 # Queue ID -> human-readable mode used by the rest of the app.
 QUEUE_ID_TO_MODE: Dict[int, str] = {
@@ -75,15 +77,21 @@ def _local_appdata_path(*parts: str) -> Path | None:
     return Path(appdata).joinpath(*parts)
 
 
+def _is_riot_client_only_path(path: Path) -> bool:
+    """Return True if the path clearly belongs to the Riot launcher, not LoL."""
+    lowered = str(path).lower()
+    return any(marker.lower() in lowered for marker in _RIOT_CLIENT_ONLY_NAMES)
+
+
 def _find_lockfile() -> Path | None:
-    """Return the first existing lockfile path, or None if not found."""
+    """Return the first valid League Client lockfile path, or None."""
     checked: List[str] = []
     for candidate in _LOCKFILE_CANDIDATES:
         try:
             path = candidate()
             if path is not None:
                 checked.append(str(path))
-                if path.exists():
+                if path.exists() and not _is_riot_client_only_path(path):
                     logger.info("LCU lockfile candidate found: %s", path)
                     return path
         except Exception:
@@ -102,11 +110,12 @@ def _find_lockfile_from_process() -> Path | None:
     try:
         for proc in psutil.process_iter(["name", "exe"]):
             name = proc.info.get("name") or ""
-            if "LeagueClient" in name:
+            # Match LeagueClient.exe / LeagueClientUx.exe but NOT RiotClient*.
+            if "LeagueClient" in name and "Riot" not in name:
                 exe = proc.info.get("exe")
                 if exe:
                     path = Path(exe).parent / "lockfile"
-                    if path.exists():
+                    if path.exists() and not _is_riot_client_only_path(path):
                         logger.info("LCU lockfile found from process: %s", path)
                         return path
     except Exception as exc:

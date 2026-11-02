@@ -170,6 +170,10 @@ class GameDetector:
                             await self._lcu.poll_events_once()
                 else:
                     await self._detect_by_process()
+                    if self._in_match:
+                        # Even when LCU is unavailable, poll the in-game Live Client
+                        # Data API directly for kills/objectives.
+                        await self._lcu.poll_events_once()
 
                 await asyncio.sleep(self.poll_interval)
         except asyncio.CancelledError:
