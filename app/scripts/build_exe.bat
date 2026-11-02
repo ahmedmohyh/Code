@@ -77,6 +77,7 @@ pyinstaller ^
   --hidden-import sklearn.tree._utils ^
   --hidden-import flow_lol.persistence.database ^
   --hidden-import flow_lol.utils.logging ^
+  --collect-all xgboost ^
   flow_lol_launcher.py
 
 if %errorlevel% neq 0 (
@@ -91,12 +92,43 @@ REM ------------------------------------------------------------------
 copy /y "config.json" "dist\config.json" >nul 2>&1
 xcopy /e /i /y "models" "dist\models" >nul 2>&1
 
+REM Also copy the native XGBoost DLL next to the bundle root so PyInstaller's
+REM --collect-all can find it at runtime inside the onefile temp directory.
+set "XGB_DLL="
+if exist ".venv\Lib\site-packages\xgboost\lib\xgboost.dll" (
+    set "XGB_DLL=.venv\Lib\site-packages\xgboost\lib\xgboost.dll"
+) else if exist ".venv\Lib\site-packages\xgboost\xgboost.dll" (
+    set "XGB_DLL=.venv\Lib\site-packages\xgboost\xgboost.dll"
+)
+if not "!XGB_DLL!"=="" (
+    echo Bundling XGBoost native library: !XGB_DLL!
+    if not exist "dist\lib" mkdir "dist\lib"
+    if not exist "dist\Library\lib" mkdir "dist\Library\lib"
+    if not exist "dist\Library\bin" mkdir "dist\Library\bin"
+    copy /y "!XGB_DLL!" "dist\xgboost.dll" >nul 2>&1
+    copy /y "!XGB_DLL!" "dist\lib\xgboost.dll" >nul 2>&1
+    copy /y "!XGB_DLL!" "dist\Library\lib\xgboost.dll" >nul 2>&1
+    copy /y "!XGB_DLL!" "dist\Library\bin\xgboost.dll" >nul 2>&1
+) else (
+    echo WARNING: xgboost.dll not found in venv; XGBoost will be skipped at runtime.
+)
+
 REM ------------------------------------------------------------------
 REM 6. Create a deployment folder that you can zip and send.
 REM ------------------------------------------------------------------
 if exist "FlowLoL-Deploy" rmdir /s /q "FlowLoL-Deploy"
+if exist "FlowLoL-Deploy" (
+    echo ERROR: Could not remove old FlowLoL-Deploy folder. Is FlowLoL.exe still running?
+    pause
+    exit /b 1
+)
 mkdir "FlowLoL-Deploy"
 copy /y "dist\FlowLoL.exe" "FlowLoL-Deploy\FlowLoL.exe"
+if not exist "FlowLoL-Deploy\FlowLoL.exe" (
+    echo ERROR: Could not copy dist\FlowLoL.exe to FlowLoL-Deploy\. Is FlowLoL.exe still running?
+    pause
+    exit /b 1
+)
 copy /y "README-TESTER.txt" "FlowLoL-Deploy\README-TESTER.txt" >nul 2>&1
 xcopy /e /i /y "models" "FlowLoL-Deploy\models" >nul 2>&1
 
