@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 
 import os
 
-from PyQt6.QtCore import QPoint, QSize, Qt, QUrl, pyqtSignal
+from PyQt6.QtCore import QPoint, QRect, QSize, Qt, QUrl, pyqtSignal
 from PyQt6.QtGui import QColor, QIcon, QPainter, QPainterPath, QPen, QPixmap, QPolygon
 from PyQt6.QtMultimedia import QMediaPlayer
 from PyQt6.QtMultimediaWidgets import QVideoWidget
@@ -19,6 +19,7 @@ from PyQt6.QtWidgets import (
     QGridLayout,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMessageBox,
@@ -51,12 +52,18 @@ class FlowTimelineWidget(QWidget):
 
     prediction_clicked = pyqtSignal(object)
     selection_changed = pyqtSignal(object)
+    event_clicked = pyqtSignal(object)
 
     MODE_TIMELINE = "timeline"
     MODE_BLOCKS = "blocks"
     MODE_LINE = "line"
     MODE_SCATTER = "scatter"
     MODE_DISTRIBUTION = "distribution"
+
+    # Symbol types drawn on the graph for each event class.
+    EVENT_SYMBOL_KILL = "kill"
+    EVENT_SYMBOL_DEATH = "death"
+    EVENT_SYMBOL_OBJECTIVE = "objective"
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -66,10 +73,15 @@ class FlowTimelineWidget(QWidget):
         self.mode: str = self.MODE_TIMELINE
         self._alternate_shading = False
         self._selected_prediction: Optional[Dict[str, Any]] = None
+        self._selected_event: Optional[Dict[str, Any]] = None
         self._t_min = 0.0
         self._t_max = 1.0
         self._mouse_x: Optional[int] = None
         self._hover_pred: Optional[Dict[str, Any]] = None
+        self._hover_event: Optional[Dict[str, Any]] = None
+        self._visible_match_ids: set[int] = set()
+        self._highlight_username: Optional[str] = None
+        self._filter_username: Optional[str] = None
         self.setMinimumHeight(240)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMouseTracking(True)
@@ -96,43 +108,111 @@ class FlowTimelineWidget(QWidget):
         self.matches = matches or []
         self.game_events = game_events or []
         self._selected_prediction = None
+        self._selected_event = None
+        self._visible_match_ids = {m["id"] for m in self.matches}
+        self.update()
+
+    def set_visible_matches(self, match_ids: set[int]) -> None:
+        """Restrict the timeline to predictions/events inside these matches."""
+        self._visible_match_ids = set(match_ids)
+        # Keep the selected event if it is still inside the visible range.
+        if self._selected_event is not None:
+            event_match = self._selected_event.get("match_id")
+            if event_match is not None and event_match not in self._visible_match_ids:
+                self._selected_event = None
+        self.update()
+
+    def visible_match_ids(self) -> set[int]:
+        return set(self._visible_match_ids)
+
+    def set_highlight_username(self, username: Optional[str]) -> None:
+        """Highlight events where the given player is actor (green) or target (red)."""
+        self._highlight_username = username.strip().lower() if username else None
+        self.update()
+
+    def set_filter_username(self, username: Optional[str]) -> None:
+        """Show only events that involve the selected player (actor or target)."""
+        self._filter_username = username.strip().lower() if username else None
         self.update()
 
     def set_alternate_shading(self, enabled: bool) -> None:
         self._alternate_shading = enabled
         self.update()
 
-    def selected_prediction(self) -> Optional[Dict[str, Any]]:
-        return self._selected_prediction
+    def _visible_predictions(self) -> List[Dict[str, Any]]:
+        """Return predictions that fall inside the selected match(es)."""
+        if not self._visible_match_ids:
+            return self.predictions
+        visible = []
+        for pred in self.predictions:
+            ts = pred.get("timestamp")
+            if ts is None:
+                continue
+            for m in self.matches:
+                if m["id"] not in self._visible_match_ids:
+                    continue
+                started = m.get("started_at")
+                ended = m.get("ended_at")
+                if started is not None and ts >= started and (ended is None or ts <= ended):
+                    visible.append(pred)
+                    break
+        return visible
 
-    def set_selected_prediction(self, prediction: Optional[Dict[str, Any]]) -> None:
-        self._selected_prediction = prediction
-        if prediction is not None:
-            self.selection_changed.emit(prediction)
-        self.update()
+    def _visible_events(self) -> List[Dict[str, Any]]:
+        """Return game events that fall inside the selected match(es) and player filter."""
+        base = []
+        if not self._visible_match_ids:
+            base = list(self.game_events)
+        else:
+            for event in self.game_events:
+                ts = event.get("timestamp")
+                if ts is None:
+                    continue
+                for m in self.matches:
+                    if m["id"] not in self._visible_match_ids:
+                        continue
+                    started = m.get("started_at")
+                    ended = m.get("ended_at")
+                    if started is not None and ts >= started and (ended is None or ts <= ended):
+                        base.append(event)
+                        break
 
-    def paintEvent(self, event: object) -> None:
-        painter = QPainter(self)
-        try:
-            self._draw(painter)
-        finally:
-            painter.end()
-
-    def _geometry(self) -> tuple:
-        width = self.width()
-        height = self.height()
-        plot_w = width - self.PADDING_LEFT - self.PADDING_RIGHT
-        plot_h = height - self.PADDING_TOP - self.PADDING_BOTTOM
-        return width, height, plot_w, plot_h
+        if not self._filter_username:
+            return base
+        filtered = []
+        for event in base:
+            actor = (event.get("actor") or "").lower()
+            target = (event.get("target") or "").lower()
+            if actor == self._filter_username or target == self._filter_username:
+                filtered.append(event)
+        return filtered
 
     def _time_range(self) -> tuple[float, float]:
-        if not self.predictions:
-            return 0.0, 1.0
-        times = [p["timestamp"] for p in self.predictions]
-        t_min, t_max = min(times), max(times)
+        preds = self._visible_predictions()
+        if preds:
+            times = [p["timestamp"] for p in preds]
+            t_min, t_max = min(times), max(times)
+        elif self._visible_match_ids:
+            # No predictions in this match; use the match bounds.
+            bounds: list[float] = []
+            for m in self.matches:
+                if m["id"] in self._visible_match_ids:
+                    if m.get("started_at") is not None:
+                        bounds.append(m["started_at"])
+                    if m.get("ended_at") is not None:
+                        bounds.append(m["ended_at"])
+            t_min, t_max = (min(bounds), max(bounds)) if bounds else (0.0, 1.0)
+        else:
+            if self.predictions:
+                times = [p["timestamp"] for p in self.predictions]
+                t_min, t_max = min(times), max(times)
+            else:
+                return 0.0, 1.0
         if t_max == t_min:
             t_max = t_min + 1.0
-        return t_min, t_max
+        # Add a small padding so markers at the edges are visible.
+        pad = max(1.0, (t_max - t_min) * 0.02)
+        return t_min - pad, t_max + pad
 
     def _x(self, t: float, t_min: float, t_max: float, plot_w: float) -> float:
         return self.PADDING_LEFT + (t - t_min) / (t_max - t_min) * plot_w
@@ -157,29 +237,68 @@ class FlowTimelineWidget(QWidget):
             y = self.PADDING_TOP + int(plot_h * i / 5)
             painter.drawLine(self.PADDING_LEFT, y, width - self.PADDING_RIGHT, y)
 
-        if not self.predictions:
+        visible_preds = self._visible_predictions()
+        if not visible_preds:
             painter.setPen(QColor(Colors.TEXT_SECONDARY))
+            text = (
+                "No predictions in the selected match(es)."
+                if self._visible_match_ids
+                else "No predictions for this session yet."
+            )
             painter.drawText(
                 self.rect(),
                 Qt.AlignmentFlag.AlignCenter,
-                "No predictions for this session yet.",
+                text,
             )
             return
 
         if self.mode == self.MODE_TIMELINE:
-            self._draw_timeline(painter, plot_w, plot_h, t_min, t_max)
+            self._draw_timeline(painter, plot_w, plot_h, t_min, t_max, visible_preds)
         elif self.mode == self.MODE_BLOCKS:
-            self._draw_blocks(painter, plot_w, plot_h, t_min, t_max)
+            self._draw_blocks(painter, plot_w, plot_h, t_min, t_max, visible_preds)
         elif self.mode == self.MODE_LINE:
-            self._draw_line(painter, plot_w, plot_h, t_min, t_max)
+            self._draw_line(painter, plot_w, plot_h, t_min, t_max, visible_preds)
         elif self.mode == self.MODE_SCATTER:
-            self._draw_scatter(painter, plot_w, plot_h, t_min, t_max)
+            self._draw_scatter(painter, plot_w, plot_h, t_min, t_max, visible_preds)
         elif self.mode == self.MODE_DISTRIBUTION:
-            self._draw_distribution(painter, plot_w, plot_h, t_min, t_max)
+            self._draw_distribution(painter, plot_w, plot_h, t_min, t_max, visible_preds)
 
         self._draw_axis_and_events(painter, plot_w, plot_h, t_min, t_max)
+        self._draw_axis_labels(painter, plot_w, plot_h)
+        self._draw_legend(painter)
         self._draw_selection(painter, plot_w, plot_h, t_min, t_max)
         self._draw_hover_indicator(painter, plot_w, plot_h, t_min, t_max)
+
+    def selected_prediction(self) -> Optional[Dict[str, Any]]:
+        return self._selected_prediction
+
+    def set_selected_prediction(self, prediction: Optional[Dict[str, Any]]) -> None:
+        self._selected_prediction = prediction
+        self._selected_event = None
+        if prediction is not None:
+            self.selection_changed.emit(prediction)
+        self.update()
+
+    def set_selected_event(self, event: Optional[Dict[str, Any]]) -> None:
+        """Highlight one event on the graph."""
+        self._selected_event = event
+        self._selected_prediction = None
+        self.update()
+
+    def paintEvent(self, event: object) -> None:
+        painter = QPainter(self)
+        try:
+            self._draw(painter)
+        finally:
+            painter.end()
+
+    def _geometry(self) -> tuple:
+        width = self.width()
+        height = self.height()
+        plot_w = width - self.PADDING_LEFT - self.PADDING_RIGHT
+        plot_h = height - self.PADDING_TOP - self.PADDING_BOTTOM
+        return width, height, plot_w, plot_h
+
 
     def _draw_match_regions(
         self,
@@ -190,6 +309,8 @@ class FlowTimelineWidget(QWidget):
         plot_w: float,
     ) -> None:
         for match in self.matches:
+            if self._visible_match_ids and match.get("id") not in self._visible_match_ids:
+                continue
             start = match.get("started_at")
             end = match.get("ended_at") or t_max
             if start is None:
@@ -214,9 +335,10 @@ class FlowTimelineWidget(QWidget):
         plot_h: float,
         t_min: float,
         t_max: float,
+        visible_preds: List[Dict[str, Any]],
     ) -> None:
         self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
-        sorted_preds = sorted(enumerate(self.predictions), key=lambda item: item[1]["timestamp"])
+        sorted_preds = sorted(enumerate(visible_preds), key=lambda item: item[1]["timestamp"])
         for idx, pred in sorted_preds:
             x = self._x(pred["timestamp"], t_min, t_max, plot_w)
             label = pred.get("ensemble_label", 0)
@@ -248,12 +370,13 @@ class FlowTimelineWidget(QWidget):
         plot_h: float,
         t_min: float,
         t_max: float,
+        visible_preds: List[Dict[str, Any]],
     ) -> None:
         """Merge consecutive same-label predictions into wide coloured blocks."""
         self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
-        if not self.predictions:
+        if not visible_preds:
             return
-        sorted_preds = sorted(self.predictions, key=lambda p: p["timestamp"])
+        sorted_preds = sorted(visible_preds, key=lambda p: p["timestamp"])
         runs: list[tuple[float, float, int]] = []
         run_start_ts = sorted_preds[0]["timestamp"]
         run_label = sorted_preds[0].get("ensemble_label", 0)
@@ -283,9 +406,10 @@ class FlowTimelineWidget(QWidget):
         plot_h: float,
         t_min: float,
         t_max: float,
+        visible_preds: List[Dict[str, Any]],
     ) -> None:
         self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
-        sorted_preds = sorted(self.predictions, key=lambda p: p["timestamp"])
+        sorted_preds = sorted(visible_preds, key=lambda p: p["timestamp"])
         pen = QPen(QColor(Colors.TEXT), 2)
         painter.setPen(pen)
         prev_x: Optional[float] = None
@@ -308,9 +432,10 @@ class FlowTimelineWidget(QWidget):
         plot_h: float,
         t_min: float,
         t_max: float,
+        visible_preds: List[Dict[str, Any]],
     ) -> None:
         self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
-        for pred in self.predictions:
+        for pred in visible_preds:
             x = self._x(pred["timestamp"], t_min, t_max, plot_w)
             label = pred.get("ensemble_label", 0)
             y = self.PADDING_TOP + (0.2 * plot_h if label == 1 else 0.8 * plot_h)
@@ -326,6 +451,7 @@ class FlowTimelineWidget(QWidget):
         plot_h: float,
         t_min: float,
         t_max: float,
+        visible_preds: List[Dict[str, Any]],
     ) -> None:
         """Smooth "flow intensity" curve over time, like a continuous distribution.
 
@@ -333,10 +459,10 @@ class FlowTimelineWidget(QWidget):
         "high = more flow, low = less flow" and see kills/objectives overlaid.
         """
         self._draw_match_regions(painter, plot_h, t_min, t_max, plot_w)
-        if not self.predictions:
+        if not visible_preds:
             return
 
-        sorted_preds = sorted(self.predictions, key=lambda p: p["timestamp"])
+        sorted_preds = sorted(visible_preds, key=lambda p: p["timestamp"])
         times = [p["timestamp"] for p in sorted_preds]
         labels = [float(p.get("ensemble_label", 0)) for p in sorted_preds]
         duration = max(t_max - t_min, 1.0)
@@ -385,30 +511,29 @@ class FlowTimelineWidget(QWidget):
         t_min: float,
         t_max: float,
     ) -> None:
-        # Game event markers (triangles above the axis)
-        event_colors = {
-            "kill": QColor(Colors.SUCCESS),
-            "death": QColor(Colors.DANGER),
-            "objective": QColor(Colors.PRIMARY),
-        }
-        painter.setPen(Qt.PenStyle.NoPen)
-        y_axis = self.PADDING_TOP + int(plot_h)
-        for event in self.game_events:
+        """Draw the time axis and render game-event symbols on the graph itself."""
+        self._event_positions: list[tuple[Dict[str, Any], QRect]] = []
+        visible_events = self._visible_events()
+
+        # Draw one symbol per visible event in a dedicated event lane at the top
+        # of the plot so the flow bars stay readable.
+        lane_height = 28
+        lane_top = self.PADDING_TOP + 6
+        for event in visible_events:
             t = event.get("timestamp")
             if t is None:
                 continue
-            x = self._x(t, t_min, t_max, plot_w)
+            x = int(self._x(t, t_min, t_max, plot_w))
+            if x < self.PADDING_LEFT or x > self.width() - self.PADDING_RIGHT:
+                continue
             etype = event.get("event_type", "")
-            color = event_colors.get(etype, QColor(Colors.WARNING))
-            painter.setBrush(color)
-            polygon = QPolygon([
-                QPoint(int(x), y_axis - 8),
-                QPoint(int(x - 5), y_axis - 1),
-                QPoint(int(x + 5), y_axis - 1),
-            ])
-            painter.drawPolygon(polygon)
+            y = lane_top + self._event_lane_offset(etype) * lane_height
+            rect = QRect(x - 9, y - 9, 18, 18)
+            self._event_positions.append((event, rect))
+            self._draw_event_symbol(painter, rect, event, event == self._selected_event)
 
         # Axis line
+        y_axis = self.PADDING_TOP + int(plot_h)
         painter.setPen(QPen(QColor(Colors.TEXT_MUTED), 1))
         painter.drawLine(self.PADDING_LEFT, y_axis, self.width() - self.PADDING_RIGHT, y_axis)
 
@@ -419,38 +544,207 @@ class FlowTimelineWidget(QWidget):
             x = self._x(label_t, t_min, t_max, plot_w)
             painter.drawText(int(x - 30), y_axis + 20, 60, 20, Qt.AlignmentFlag.AlignCenter, txt)
 
+    def _event_lane_offset(self, event_type: str) -> int:
+        """Return which event lane (0..2) an event type lives in."""
+        return {
+            "kill": 0,
+            "death": 1,
+            "objective": 2,
+        }.get(event_type, 2)
+
+    def _draw_event_symbol(
+        self,
+        painter: QPainter,
+        rect: QRect,
+        event: Dict[str, Any],
+        selected: bool,
+    ) -> None:
+        """Draw a readable symbol for a kill, death, or objective.
+
+        When a player is selected, symbols show the selected player's role:
+        - K in green: selected player scored a kill / was the actor
+        - D in red: selected player was killed / was the target
+        Otherwise the symbol shows the raw event type (K/D/O).
+        """
+        event_type = event.get("event_type", "")
+        event_colors = {
+            "kill": QColor(Colors.SUCCESS),
+            "death": QColor(Colors.DANGER),
+            "objective": QColor(Colors.PRIMARY),
+        }
+        cx, cy = rect.center().x(), rect.center().y()
+
+        highlight = self._highlight_username
+        actor = (event.get("actor") or "").lower()
+        target = (event.get("target") or "").lower()
+        is_actor = bool(highlight and actor == highlight)
+        is_target = bool(highlight and target == highlight)
+
+        # When a player is selected and this event involves them, show role-based symbol.
+        if is_actor:
+            base_color = QColor(Colors.SUCCESS)
+            label = "K"
+        elif is_target:
+            base_color = QColor(Colors.DANGER)
+            label = "D"
+        else:
+            base_color = event_colors.get(event_type, QColor(Colors.WARNING))
+            label = {"kill": "K", "death": "D", "objective": "O"}.get(event_type, "?")
+
+        # Selection ring.
+        if selected:
+            painter.setPen(QPen(QColor(Colors.WARNING), 3))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(rect.adjusted(-3, -3, 3, 3))
+
+        # Symbol background.
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(base_color)
+        painter.drawEllipse(rect)
+
+        # Inner letter/icon label.
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(8)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(Colors.SURFACE), 1))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+
+    def _draw_axis_labels(
+        self,
+        painter: QPainter,
+        plot_w: float,
+        plot_h: float,
+    ) -> None:
+        """Draw X and Y axis titles."""
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
+        font = painter.font()
+        font.setPointSize(9)
+        painter.setFont(font)
+
+        # X-axis label (below the axis line, outside the plot area).
+        x_label = "Time"
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
+        painter.drawText(
+            int(self.PADDING_LEFT + plot_w / 2 - 30),
+            self.height() - 6,
+            60,
+            16,
+            Qt.AlignmentFlag.AlignCenter,
+            x_label,
+        )
+
+        # Y-axis label, rotated
+        painter.save()
+        painter.translate(12, int(self.PADDING_TOP + plot_h / 2))
+        painter.rotate(-90)
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
+        painter.drawText(-60, 0, 120, 16, Qt.AlignmentFlag.AlignCenter, "Flow state")
+        painter.restore()
+
+    def _draw_legend(self, painter: QPainter) -> None:
+        """Draw a compact legend below the X-axis, outside the plot area."""
+        items = [
+            ("Kill", QColor(Colors.SUCCESS), "K"),
+            ("Death", QColor(Colors.DANGER), "D"),
+            ("Objective", QColor(Colors.PRIMARY), "O"),
+        ]
+        legend_w = 20 + 70 * len(items)
+        legend_h = 22
+        # Place it just below the axis line and time labels.
+        y = self.height() - self.PADDING_BOTTOM + 4
+        x = self.PADDING_LEFT
+
+        # Semi-transparent background.
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(Colors.SURFACE))
+        painter.setOpacity(0.95)
+        painter.drawRoundedRect(x, y, legend_w, legend_h, 6, 6)
+        painter.setOpacity(1.0)
+
+        painter.setPen(QColor(Colors.TEXT_SECONDARY))
+        font = painter.font()
+        font.setPointSize(8)
+        painter.setFont(font)
+
+        row_x = x + 8
+        row_y = y + 6
+        for name, color, label in items:
+            # Symbol circle.
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(color)
+            painter.drawEllipse(row_x, row_y - 5, 12, 12)
+            # Letter label.
+            painter.setPen(QPen(QColor(Colors.SURFACE), 1))
+            rect = QRect(row_x, row_y - 5, 12, 12)
+            font2 = painter.font()
+            font2.setBold(True)
+            font2.setPointSize(7)
+            painter.setFont(font2)
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+            # Name.
+            painter.setPen(QColor(Colors.TEXT))
+            painter.setFont(font)
+            painter.drawText(row_x + 16, row_y, 50, 12, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, name)
+            row_x += 70
+
+    def _event_at(self, x: int, y: int) -> Optional[Dict[str, Any]]:
+        """Return the visible event whose symbol contains the given point."""
+        for event, rect in getattr(self, "_event_positions", []):
+            if rect.contains(x, y):
+                return event
+        return None
+
     def _prediction_at_x(self, x: float) -> tuple[Optional[Dict[str, Any]], float]:
         """Return the prediction nearest to the given mouse x and the time there."""
         width, _, plot_w, _ = self._geometry()
-        if not self.predictions or plot_w <= 0 or x < self.PADDING_LEFT or x > width - self.PADDING_RIGHT:
+        visible_preds = self._visible_predictions()
+        if not visible_preds or plot_w <= 0 or x < self.PADDING_LEFT or x > width - self.PADDING_RIGHT:
             return None, 0.0
         t_min, t_max = self._time_range()
         t = self._t_from_x(x, t_min, t_max, plot_w)
-        nearest = min(self.predictions, key=lambda p: abs(p["timestamp"] - t))
+        nearest = min(visible_preds, key=lambda p: abs(p["timestamp"] - t))
         # Accept clicks/hovers within ~1.5 average inter-prediction gaps.
-        threshold = max(15.0, (t_max - t_min) / max(1, len(self.predictions)) * 1.5)
+        threshold = max(15.0, (t_max - t_min) / max(1, len(visible_preds)) * 1.5)
         if abs(nearest["timestamp"] - t) <= threshold:
             return nearest, t
         return None, t
 
     def mouseMoveEvent(self, event) -> None:
         x = int(event.position().x())
+        y = int(event.position().y())
         self._mouse_x = x
-        pred, t = self._prediction_at_x(x)
-        self._hover_pred = pred
-        if pred is not None:
-            ts = pred["timestamp"]
-            label = "flow" if pred.get("ensemble_label", 0) == 1 else "no-flow"
-            votes = pred.get("n_for_majority", 0)
-            total = pred.get("n_votes", 0)
-            self.setToolTip(
-                f"{datetime.fromtimestamp(ts).strftime('%H:%M:%S')} – {label.upper()}\n"
-                f"Votes: {votes}/{total} | click to inspect"
-            )
+        hover_event = self._event_at(x, y)
+        self._hover_event = hover_event
+        if hover_event is not None:
+            ts = hover_event["timestamp"]
+            etype = hover_event.get("event_type", "event")
+            actor = hover_event.get("actor") or "?"
+            target = hover_event.get("target") or ""
+            desc = f"{datetime.fromtimestamp(ts).strftime('%H:%M:%S')} – {etype}"
+            if target:
+                desc += f": {actor} → {target}"
+            else:
+                desc += f": {actor}"
+            self.setToolTip(f"{desc}\nClick to highlight")
             self.setCursor(Qt.CursorShape.PointingHandCursor)
+            self._hover_pred = None
         else:
-            self.setToolTip("")
-            self.setCursor(Qt.CursorShape.CrossCursor)
+            pred, t = self._prediction_at_x(x)
+            self._hover_pred = pred
+            if pred is not None:
+                ts = pred["timestamp"]
+                label = "flow" if pred.get("ensemble_label", 0) == 1 else "no-flow"
+                votes = pred.get("n_for_majority", 0)
+                total = pred.get("n_votes", 0)
+                self.setToolTip(
+                    f"{datetime.fromtimestamp(ts).strftime('%H:%M:%S')} – {label.upper()}\n"
+                    f"Votes: {votes}/{total} | click to inspect"
+                )
+                self.setCursor(Qt.CursorShape.PointingHandCursor)
+            else:
+                self.setToolTip("")
+                self.setCursor(Qt.CursorShape.CrossCursor)
         self.update()
 
     def leaveEvent(self, event) -> None:
@@ -510,7 +804,14 @@ class FlowTimelineWidget(QWidget):
         painter.drawText(int(x) + 4, text_y, 120, 16, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, txt)
 
     def mousePressEvent(self, event) -> None:
-        pred, _ = self._prediction_at_x(event.position().x())
+        x = int(event.position().x())
+        y = int(event.position().y())
+        event_hit = self._event_at(x, y)
+        if event_hit is not None:
+            self.set_selected_event(event_hit)
+            self.event_clicked.emit(event_hit)
+            return
+        pred, _ = self._prediction_at_x(x)
         if pred is not None:
             self.set_selected_prediction(pred)
             self.prediction_clicked.emit(pred)
@@ -539,6 +840,9 @@ class DashboardWidget(QWidget):
         self._current_predictions: List[Dict[str, Any]] = []
         self._sorted_predictions: List[Dict[str, Any]] = []
         self._selected_index: int = -1
+        self._current_game_events: List[Dict[str, Any]] = []
+        self._graph_expanded = False
+        self._normal_splitter_sizes: List[int] = [520, 450]
 
         self._build_ui()
         self.refresh_sessions()
@@ -603,6 +907,20 @@ class DashboardWidget(QWidget):
         self.view_combo.addItem("Flow distribution", FlowTimelineWidget.MODE_DISTRIBUTION)
         self.view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
         view_row.addWidget(self.view_combo)
+
+        view_row.addWidget(QLabel("Match:"))
+        self.match_combo = QComboBox()
+        self.match_combo.setMinimumWidth(180)
+        self.match_combo.currentIndexChanged.connect(self._on_match_combo_changed)
+        view_row.addWidget(self.match_combo)
+
+        view_row.addWidget(QLabel("Player:"))
+        self.player_filter_combo = QComboBox()
+        self.player_filter_combo.setMinimumWidth(140)
+        self.player_filter_combo.setToolTip("Show only events involving this player")
+        self.player_filter_combo.currentIndexChanged.connect(self._on_player_filter_changed)
+        view_row.addWidget(self.player_filter_combo)
+
         view_row.addStretch()
         view_row.addWidget(QLabel("Alternate shading:"))
         self.alternate_switch = Switch()
@@ -639,18 +957,49 @@ class DashboardWidget(QWidget):
         self.selection_info.setProperty("role", "muted")
         nav_row.addWidget(self.selection_info)
         nav_row.addStretch()
-        layout.addLayout(nav_row)
+        self.nav_row_widget = QWidget()
+        self.nav_row_widget.setLayout(nav_row)
+        layout.addWidget(self.nav_row_widget)
 
         # Content splitter
-        splitter = QSplitter(Qt.Orientation.Horizontal)
+        self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
-        # Timeline card
+        # Timeline card with inline zoom button
         timeline_card = CardWidget("Flow timeline")
+        timeline_container = QWidget()
+        timeline_container_layout = QVBoxLayout(timeline_container)
+        timeline_container_layout.setContentsMargins(0, 0, 0, 0)
+        timeline_container_layout.setSpacing(0)
+
         self.timeline = FlowTimelineWidget()
         self.timeline.prediction_clicked.connect(self._on_prediction_clicked)
         self.timeline.selection_changed.connect(self._on_timeline_selection_changed)
-        timeline_card.content_layout().addWidget(self.timeline)
-        splitter.addWidget(timeline_card)
+        self.timeline.event_clicked.connect(self._on_timeline_event_clicked)
+        timeline_container_layout.addWidget(self.timeline, stretch=1)
+
+        zoom_bar = QHBoxLayout()
+        zoom_bar.addStretch()
+        self.expand_graph_btn = QPushButton("⛶")
+        self.expand_graph_btn.setProperty("role", "icon")
+        self.expand_graph_btn.setToolTip("Expand / shrink the graph")
+        self.expand_graph_btn.setFixedSize(32, 32)
+        self.expand_graph_btn.clicked.connect(self._toggle_graph_expansion)
+        zoom_bar.addWidget(self.expand_graph_btn)
+        timeline_container_layout.addLayout(zoom_bar)
+
+        # Event list lives under the graph so it stays visible in expanded mode.
+        events_label = QLabel("Game events")
+        events_label.setProperty("role", "muted")
+        timeline_container_layout.addWidget(events_label)
+        self.event_list = QListWidget()
+        self.event_list.setAlternatingRowColors(True)
+        self.event_list.setMinimumHeight(90)
+        self.event_list.setMaximumHeight(160)
+        self.event_list.itemClicked.connect(self._on_event_list_clicked)
+        timeline_container_layout.addWidget(self.event_list)
+
+        timeline_card.content_layout().addWidget(timeline_container)
+        self.splitter.addWidget(timeline_card)
 
         # Details card (scrollable so long session details are always readable)
         details_card = CardWidget("Session details")
@@ -666,19 +1015,6 @@ class DashboardWidget(QWidget):
         self.details_label.setProperty("role", "muted")
         details_layout.addWidget(self.details_label)
 
-        details_layout.addWidget(QLabel("Matches"))
-        self.match_list = QListWidget()
-        self.match_list.setAlternatingRowColors(True)
-        self.match_list.setMinimumHeight(220)
-        self.match_list.currentItemChanged.connect(self._on_match_selected)
-        details_layout.addWidget(self.match_list, stretch=2)
-
-        details_layout.addWidget(QLabel("Game events"))
-        self.event_list = QListWidget()
-        self.event_list.setAlternatingRowColors(True)
-        self.event_list.setMinimumHeight(120)
-        details_layout.addWidget(self.event_list, stretch=1)
-
         details_layout.addWidget(QLabel("Replays"))
         self.replay_list = QListWidget()
         self.replay_list.setAlternatingRowColors(True)
@@ -693,9 +1029,9 @@ class DashboardWidget(QWidget):
         details_scroll.setWidget(details_widget)
         details_card.content_layout().addWidget(details_scroll)
 
-        splitter.addWidget(details_card)
-        splitter.setSizes([520, 450])
-        layout.addWidget(splitter, stretch=1)
+        self.splitter.addWidget(details_card)
+        self.splitter.setSizes([520, 450])
+        layout.addWidget(self.splitter, stretch=1)
 
     def refresh_sessions(self) -> None:
         self._sessions = self.repo.get_sessions(limit=50)
@@ -728,7 +1064,9 @@ class DashboardWidget(QWidget):
         if session is None:
             self.details_label.setText("No session selected.")
             self.details_label.setProperty("role", "muted")
-            self.match_list.clear()
+            self.match_combo.clear()
+            self.match_combo.setEnabled(False)
+            self.event_list.clear()
             self.timeline.set_data([])
             self._current_session_id = None
             self.session_changed.emit(None)
@@ -743,8 +1081,9 @@ class DashboardWidget(QWidget):
         game_events = self.repo.get_game_events(session_id)
         replays = self.repo.get_replays(session_id)
 
-        # Match list
-        self.match_list.clear()
+        # Match dropdown: "All matches" first, then each match.
+        self.match_combo.clear()
+        self.match_combo.addItem("All matches", -1)
         self._match_rows: List[Dict[str, Any]] = matches
         for m in matches:
             start = datetime.fromtimestamp(m["started_at"]).strftime("%H:%M:%S")
@@ -753,25 +1092,18 @@ class DashboardWidget(QWidget):
             rec = ""
             if m.get("notes"):
                 rec = f" | {m['notes']}"
-            item_text = f"{m['game_mode']} – {start} → {end} ({detected}){rec}"
-            item = QListWidgetItem(item_text)
-            item.setData(Qt.ItemDataRole.UserRole, m["id"])
-            self.match_list.addItem(item)
-        if not matches:
-            self.match_list.addItem("No matches recorded")
+            text = f"{m['game_mode']} – {start} → {end} ({detected}){rec}"
+            self.match_combo.addItem(text, m["id"])
+        self.match_combo.setEnabled(len(matches) > 0)
+
+        # Store full session events and initialize the player list with all players.
+        self._current_game_events = list(game_events)
+        self._refresh_player_list(all_matches=True)
 
         # Global event / replay summaries
         self.event_list.clear()
         for e in game_events:
-            t = datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M:%S")
-            actor = e.get("actor") or "?"
-            target = e.get("target") or ""
-            desc = f"{t} – {e['event_type']}"
-            if target:
-                desc += f": {actor} → {target}"
-            else:
-                desc += f": {actor}"
-            self.event_list.addItem(desc)
+            self.event_list.addItem(self._event_description(e))
         if not game_events:
             self.event_list.addItem("No game events recorded")
 
@@ -818,6 +1150,8 @@ class DashboardWidget(QWidget):
         self._sorted_predictions = sorted(predictions, key=lambda p: p["timestamp"])
         self._selected_index = -1
         self.timeline.set_data(predictions, matches, game_events)
+        # Default to "All matches" and refresh the event list / timeline filter.
+        self._on_match_combo_changed(0)
         self._update_selection_ui()
 
     @staticmethod
@@ -961,33 +1295,86 @@ class DashboardWidget(QWidget):
     def _on_alternate_toggled(self, enabled: bool) -> None:
         self.timeline.set_alternate_shading(enabled)
 
-    def _on_match_selected(
-        self,
-        current: QListWidgetItem | None,
-        previous: QListWidgetItem | None,
-    ) -> None:
-        if current is None or self._current_session_id is None:
-            return
-        match_id = current.data(Qt.ItemDataRole.UserRole)
-        if not isinstance(match_id, int):
-            return
-        # Refresh event and replay lists for this match.
-        events = self.repo.get_game_events(self._current_session_id, match_id=match_id)
-        self.event_list.clear()
-        for e in events:
-            t = datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M:%S")
-            actor = e.get("actor") or "?"
-            target = e.get("target") or ""
-            desc = f"{t} – {e['event_type']}"
-            if target:
-                desc += f": {actor} → {target}"
-            else:
-                desc += f": {actor}"
-            self.event_list.addItem(desc)
-        if not events:
-            self.event_list.addItem("No game events recorded for this match")
+    def _on_player_filter_changed(self, index: int) -> None:
+        """Filter events to the selected player and highlight them."""
+        username = self.player_filter_combo.itemData(index)
+        if username:
+            self.timeline.set_filter_username(username)
+            self.timeline.set_highlight_username(username)
+        else:
+            self.timeline.set_filter_username(None)
+            self.timeline.set_highlight_username(None)
 
-        replays = self.repo.get_replays(self._current_session_id, match_id=match_id)
+    def _toggle_graph_expansion(self) -> None:
+        """Expand the graph to hide the details panel, or restore it."""
+        self._graph_expanded = not self._graph_expanded
+        if self._graph_expanded:
+            self._normal_splitter_sizes = list(self.splitter.sizes())
+            # Hide the right (details) panel and the nav row below the graph.
+            self.splitter.setSizes([self.splitter.width(), 0])
+            self.nav_row_widget.setVisible(False)
+            self.timeline.setMinimumHeight(360)
+            self.expand_graph_btn.setText("🗗")
+            self.expand_graph_btn.setToolTip("Shrink the graph")
+        else:
+            total = max(1, sum(self.splitter.sizes()))
+            left = self._normal_splitter_sizes[0]
+            right = self._normal_splitter_sizes[1]
+            scale = total / max(1, left + right)
+            self.splitter.setSizes([int(left * scale), int(right * scale)])
+            self.nav_row_widget.setVisible(True)
+            self.timeline.setMinimumHeight(240)
+            self.expand_graph_btn.setText("⛶")
+            self.expand_graph_btn.setToolTip("Expand the graph")
+
+    def _refresh_player_list(self, all_matches: bool = False) -> None:
+        """Rebuild the player dropdown from the selected match (or whole session)."""
+        match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+        events = list(self._current_game_events)
+        if not all_matches and match_id != -1:
+            events = [e for e in events if e.get("match_id") == match_id]
+
+        players = sorted({
+            (e.get("actor") or "").lower()
+            for e in events
+            if e.get("actor")
+        } | {
+            (e.get("target") or "").lower()
+            for e in events
+            if e.get("target")
+        })
+
+        # Preserve current selection if the player is still in the new list.
+        current = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
+        self.player_filter_combo.clear()
+        self.player_filter_combo.addItem("All players", None)
+        for p in players:
+            self.player_filter_combo.addItem(p, p)
+        if current and current in players:
+            idx = self.player_filter_combo.findData(current)
+            self.player_filter_combo.setCurrentIndex(max(0, idx))
+        else:
+            self.player_filter_combo.setCurrentIndex(0)
+
+    def _on_match_combo_changed(self, index: int) -> None:
+        """Filter the timeline and event list to the selected match."""
+        if self._current_session_id is None or index < 0:
+            return
+        match_id = self.match_combo.itemData(index)
+        if match_id == -1:
+            self.timeline.set_visible_matches({m["id"] for m in self._match_rows})
+        elif isinstance(match_id, int):
+            self.timeline.set_visible_matches({match_id})
+        else:
+            self.timeline.set_visible_matches(set())
+        self._refresh_player_list(all_matches=(match_id == -1))
+        self._refresh_event_list()
+
+        # Update replay list for the selected match as well.
+        replays = self.repo.get_replays(
+            self._current_session_id,
+            match_id=match_id if isinstance(match_id, int) and match_id != -1 else None,
+        )
         self.replay_list.clear()
         self._replay_rows = replays
         for r in replays:
@@ -1001,7 +1388,102 @@ class DashboardWidget(QWidget):
             self.replay_list.addItem(item)
         self.open_replay_btn.setEnabled(bool(replays))
         if not replays:
-            self.replay_list.addItem("No replays linked to this match")
+            self.replay_list.addItem(
+                "No replays linked" if match_id == -1 else "No replays linked to this match"
+            )
+
+    def _refresh_event_list(self) -> None:
+        """Repopulate the event list respecting the current match and player filters."""
+        match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+        username = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
+
+        events = list(self._current_game_events)
+        if match_id != -1:
+            events = [e for e in events if e.get("match_id") == match_id]
+        if username:
+            username = username.lower()
+            events = [
+                e for e in events
+                if (e.get("actor") or "").lower() == username
+                or (e.get("target") or "").lower() == username
+            ]
+
+        self.event_list.clear()
+        for e in events:
+            item = QListWidgetItem(self._event_description(e))
+            item.setData(Qt.ItemDataRole.UserRole, id(e))
+            self.event_list.addItem(item)
+        if not events:
+            self.event_list.addItem("No game events match the current filters")
+
+    def _filtered_events(self) -> List[Dict[str, Any]]:
+        """Return the events currently visible in the list."""
+        match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+        username = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
+        events = list(self._current_game_events)
+        if match_id != -1:
+            events = [e for e in events if e.get("match_id") == match_id]
+        if username:
+            username = username.lower()
+            events = [
+                e for e in events
+                if (e.get("actor") or "").lower() == username
+                or (e.get("target") or "").lower() == username
+            ]
+        return events
+
+    def _event_description(self, e: Dict[str, Any]) -> str:
+        t = datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M:%S")
+        actor = e.get("actor") or "?"
+        target = e.get("target") or ""
+        desc = f"{t} – {e['event_type']}"
+        if target:
+            desc += f": {actor} → {target}"
+        else:
+            desc += f": {actor}"
+        return desc
+
+    def _on_event_list_clicked(self, item: QListWidgetItem) -> None:
+        """When the user clicks an event in the list, highlight it on the graph."""
+        row = self.event_list.row(item)
+        if row < 0:
+            return
+        events = self._filtered_events()
+        if row < len(events):
+            self.timeline.set_selected_event(events[row])
+
+    def _on_timeline_event_clicked(self, event: Dict[str, Any]) -> None:
+        """When the user clicks an event symbol on the graph, select it in the list."""
+        match_id = event.get("match_id")
+        if match_id is not None:
+            idx = self.match_combo.findData(match_id)
+            if idx >= 0:
+                self.match_combo.setCurrentIndex(idx)
+        events = self._filtered_events()
+        for i in range(self.event_list.count()):
+            item = self.event_list.item(i)
+            if item is None:
+                continue
+            row = self.event_list.row(item)
+            if row < len(events) and events[row] is event:
+                self.event_list.setCurrentItem(item)
+                break
+
+    def _open_fullscreen_graph(self) -> None:
+        """Open a maximized window with the graph, session/match dropdowns and event list."""
+        session_id = self._current_session_id
+        if session_id is None:
+            QMessageBox.information(self, "Fullscreen graph", "Select a session first.")
+            return
+        dialog = FullscreenGraphDialog(
+            repo=self.repo,
+            sessions=self._sessions,
+            current_session_id=session_id,
+            current_match_id=self.match_combo.itemData(self.match_combo.currentIndex()),
+            webcam_dir=self.webcam_dir,
+            parent=self,
+        )
+        dialog.exec()
 
     def _open_selected_replay(self) -> None:
         item = self.replay_list.currentItem()
@@ -1063,6 +1545,193 @@ class DashboardWidget(QWidget):
         n_deleted = self.repo.delete_all_sessions()
         logger.info("Cleared all sessions from database (%s deleted)", n_deleted)
         self.refresh_sessions()
+
+
+class FullscreenGraphDialog(QDialog):
+    """Maximized timeline with session/match selectors and event list."""
+
+    def __init__(
+        self,
+        repo: SessionRepository,
+        sessions: List[Dict[str, Any]],
+        current_session_id: int,
+        current_match_id: int | None,
+        webcam_dir: Path,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Flow-LoL – Fullscreen graph")
+        self.setWindowState(Qt.WindowState.WindowMaximized)
+        self.setMinimumSize(900, 600)
+        self.repo = repo
+        self._sessions = sessions
+        self._webcam_dir = webcam_dir
+        self._current_match_id = current_match_id if current_match_id not in (None, -1) else None
+        self._game_events: List[Dict[str, Any]] = []
+
+        layout = QVBoxLayout(self)
+        layout.setSpacing(Spacing.MD)
+
+        # Top bar: session + match selectors.
+        top_bar = QHBoxLayout()
+        top_bar.setSpacing(Spacing.MD)
+        top_bar.addWidget(QLabel("Session:"))
+        self.session_combo = QComboBox()
+        self.session_combo.setMinimumWidth(260)
+        for s in sessions:
+            started = datetime.fromtimestamp(s["started_at"]).strftime("%Y-%m-%d %H:%M")
+            ended = " (running)" if s["ended_at"] is None else ""
+            self.session_combo.addItem(f"{started} – session {s['id']}{ended}", s["id"])
+        idx = self.session_combo.findData(current_session_id)
+        self.session_combo.setCurrentIndex(max(0, idx))
+        self.session_combo.currentIndexChanged.connect(self._on_session_changed)
+        top_bar.addWidget(self.session_combo, stretch=2)
+
+        top_bar.addWidget(QLabel("Match:"))
+        self.match_combo = QComboBox()
+        self.match_combo.setMinimumWidth(220)
+        self.match_combo.currentIndexChanged.connect(self._on_match_changed)
+        top_bar.addWidget(self.match_combo, stretch=1)
+
+        self.view_combo = QComboBox()
+        self.view_combo.addItem("Timeline (bars)", FlowTimelineWidget.MODE_TIMELINE)
+        self.view_combo.addItem("Blocks", FlowTimelineWidget.MODE_BLOCKS)
+        self.view_combo.addItem("Line graph", FlowTimelineWidget.MODE_LINE)
+        self.view_combo.addItem("Scatter", FlowTimelineWidget.MODE_SCATTER)
+        self.view_combo.addItem("Flow distribution", FlowTimelineWidget.MODE_DISTRIBUTION)
+        self.view_combo.currentIndexChanged.connect(self._on_view_changed)
+        top_bar.addWidget(QLabel("View:"))
+        top_bar.addWidget(self.view_combo)
+
+        close_btn = QPushButton("✕ Close")
+        close_btn.clicked.connect(self.accept)
+        top_bar.addWidget(close_btn)
+        layout.addLayout(top_bar)
+
+        # Main area: big timeline + event list on the right.
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+
+        self.timeline = FlowTimelineWidget()
+        self.timeline.setMinimumHeight(360)
+        self.timeline.event_clicked.connect(self._on_timeline_event_clicked)
+        splitter.addWidget(self.timeline)
+
+        events_card = CardWidget("Game events")
+        events_layout = events_card.content_layout()
+        self.event_list = QListWidget()
+        self.event_list.setAlternatingRowColors(True)
+        self.event_list.itemClicked.connect(self._on_event_list_clicked)
+        events_layout.addWidget(self.event_list)
+        splitter.addWidget(events_card)
+        splitter.setSizes([800, 300])
+        layout.addWidget(splitter, stretch=1)
+
+        self._load_session(current_session_id, select_match_id=self._current_match_id)
+
+    def _load_session(self, session_id: int, select_match_id: int | None = None) -> None:
+        self._current_session_id = session_id
+        predictions = self.repo.get_predictions(session_id)
+        matches = self.repo.get_matches(session_id)
+        self._game_events = self.repo.get_game_events(session_id)
+
+        self.match_combo.clear()
+        self.match_combo.addItem("All matches", -1)
+        for m in matches:
+            start = datetime.fromtimestamp(m["started_at"]).strftime("%H:%M:%S")
+            end = "running" if m["ended_at"] is None else datetime.fromtimestamp(m["ended_at"]).strftime("%H:%M:%S")
+            self.match_combo.addItem(f"{m['game_mode']} – {start} → {end}", m["id"])
+
+        if select_match_id is not None:
+            idx = self.match_combo.findData(select_match_id)
+            if idx >= 0:
+                self.match_combo.setCurrentIndex(idx)
+            else:
+                self.match_combo.setCurrentIndex(0)
+        else:
+            self.match_combo.setCurrentIndex(0)
+
+        self.timeline.set_data(predictions, matches, self._game_events)
+        self._refresh_event_list()
+
+    def _on_session_changed(self, index: int) -> None:
+        session_id = self.session_combo.itemData(index)
+        if isinstance(session_id, int):
+            self._load_session(session_id)
+
+    def _on_match_changed(self, index: int) -> None:
+        match_id = self.match_combo.itemData(index)
+        if match_id == -1:
+            self.timeline.set_visible_matches({m["id"] for m in self.repo.get_matches(self._current_session_id)})
+        elif isinstance(match_id, int):
+            self.timeline.set_visible_matches({match_id})
+        self._refresh_event_list()
+
+    def _on_view_changed(self, index: int) -> None:
+        mode = self.view_combo.itemData(index)
+        if mode:
+            self.timeline.set_mode(str(mode))
+
+    def _refresh_event_list(self) -> None:
+        self.event_list.clear()
+        match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+        events = (
+            list(self._game_events)
+            if match_id == -1
+            else [e for e in self._game_events if e.get("match_id") == match_id]
+        )
+        for e in events:
+            self.event_list.addItem(self._event_description(e))
+        if not events:
+            self.event_list.addItem(
+                "No game events recorded"
+                if match_id == -1
+                else "No game events recorded for this match"
+            )
+
+    def _event_description(self, e: Dict[str, Any]) -> str:
+        t = datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M:%S")
+        actor = e.get("actor") or "?"
+        target = e.get("target") or ""
+        desc = f"{t} – {e['event_type']}"
+        if target:
+            desc += f": {actor} → {target}"
+        else:
+            desc += f": {actor}"
+        return desc
+
+    def _on_event_list_clicked(self, item: QListWidgetItem) -> None:
+        row = self.event_list.row(item)
+        if row < 0:
+            return
+        match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+        events = (
+            list(self._game_events)
+            if match_id == -1
+            else [e for e in self._game_events if e.get("match_id") == match_id]
+        )
+        if row < len(events):
+            self.timeline.set_selected_event(events[row])
+
+    def _on_timeline_event_clicked(self, event: Dict[str, Any]) -> None:
+        match_id = event.get("match_id")
+        if match_id is not None:
+            idx = self.match_combo.findData(match_id)
+            if idx >= 0:
+                self.match_combo.setCurrentIndex(idx)
+        for i in range(self.event_list.count()):
+            item = self.event_list.item(i)
+            if item is None:
+                continue
+            visible_match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+            events = (
+                list(self._game_events)
+                if visible_match_id == -1
+                else [e for e in self._game_events if e.get("match_id") == match_id]
+            )
+            row = self.event_list.row(item)
+            if row < len(events) and events[row] is event:
+                self.event_list.setCurrentItem(item)
+                break
 
 
 class PredictionInspectDialog(QDialog):
