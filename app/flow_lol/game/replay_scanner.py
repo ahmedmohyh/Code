@@ -76,16 +76,28 @@ def scan_replays(
     else:
         directory = Path(replay_dir)
 
+    logger.info("Scanning replay directory: %s", directory)
     results: List[Dict[str, object]] = []
     if not directory.exists():
+        logger.warning("Replay directory does not exist: %s", directory)
         return results
 
-    for path in sorted(directory.glob("*.rofl"), key=lambda p: p.stat().st_mtime, reverse=True):
+    files = list(directory.glob("*.rofl"))
+    logger.info("Found %s .rofl file(s) in %s", len(files), directory)
+    for path in sorted(files, key=lambda p: p.stat().st_mtime, reverse=True):
         header = parse_rofl_header(path)
         if header is None:
+            logger.debug("Could not parse replay header: %s", path)
             continue
         header["file_path"] = str(path)
         header["file_name"] = path.name
+        logger.info(
+            "Replay candidate: %s | recorded_at=%s | duration=%s | game_id=%s",
+            path.name,
+            header.get("recorded_at"),
+            header.get("duration_seconds"),
+            header.get("game_id"),
+        )
         results.append(header)
     return results
 
@@ -109,15 +121,33 @@ def scan_replays_for_session(
     match_start = match["started_at"]
     existing = {r["file_path"] for r in repository.get_replays(session_id, match_id=match_id)}
 
+    logger.info(
+        "Looking for replay for session=%s match=%s match_start=%s in %s",
+        session_id,
+        match_id,
+        match_start,
+        replay_dir,
+    )
+
     linked: List[Dict[str, object]] = []
     for replay in scan_replays(replay_dir):
         if replay["file_path"] in existing:
+            logger.info("Replay already linked: %s", replay["file_path"])
             continue
         recorded_at = replay.get("recorded_at")
         if recorded_at is None:
+            logger.warning("Replay has no recorded_at: %s", replay.get("file_path"))
             continue
+        diff = abs(recorded_at - match_start)
+        logger.info(
+            "Checking replay %s: recorded_at=%s diff=%.1fs (allow %.1fs)",
+            replay.get("file_name"),
+            recorded_at,
+            diff,
+            lookback_seconds,
+        )
         # Accept replays that started shortly before/after the match was detected.
-        if abs(recorded_at - match_start) <= lookback_seconds:
+        if diff <= lookback_seconds:
             repository.add_replay(
                 file_path=replay["file_path"],
                 game_id=replay.get("game_id"),
@@ -126,5 +156,8 @@ def scan_replays_for_session(
                 session_id=session_id,
                 match_id=match_id,
             )
+            logger.info("Linked replay %s to match %s", replay.get("file_path"), match_id)
             linked.append(replay)
+    if not linked:
+        logger.warning("No replay linked for session=%s match=%s", session_id, match_id)
     return linked

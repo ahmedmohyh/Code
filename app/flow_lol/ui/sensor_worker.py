@@ -410,7 +410,43 @@ class SensorWorker(QThread):
         self.samples.emit(name, samples)
 
     def _scan_replays(self, match_id: int) -> None:
-        """Try to link replay files to the finished match."""
+        """Try to link replay files to the finished match.
+
+        Replays are often written a few seconds after the match ends, so we
+        scan immediately and then schedule one delayed rescan.
+        """
+        if self.repository is None or self.session_id is None:
+            return
+
+        def _do_scan(attempt: int) -> None:
+            try:
+                replays = scan_replays_for_session(
+                    replay_dir=self.settings.replay_save_path,
+                    session_id=self.session_id,
+                    match_id=match_id,
+                    repository=self.repository,
+                )
+                if replays:
+                    logger.info(
+                        "Linked %s replay(s) to match %s (attempt %s)",
+                        len(replays),
+                        match_id,
+                        attempt,
+                    )
+            except Exception:
+                logger.exception("Failed to scan replays for match %s (attempt %s)", match_id, attempt)
+
+        _do_scan(1)
+
+        if self._loop is not None and not self._loop.is_closed():
+            asyncio.run_coroutine_threadsafe(
+                self._delayed_scan(match_id),
+                self._loop,
+            )
+
+    async def _delayed_scan(self, match_id: int) -> None:
+        """Wait a few seconds then try to link replays again."""
+        await asyncio.sleep(15)
         if self.repository is None or self.session_id is None:
             return
         try:
@@ -421,9 +457,13 @@ class SensorWorker(QThread):
                 repository=self.repository,
             )
             if replays:
-                logger.info("Linked %s replay(s) to match %s", len(replays), match_id)
+                logger.info(
+                    "Delayed scan linked %s replay(s) to match %s",
+                    len(replays),
+                    match_id,
+                )
         except Exception:
-            logger.exception("Failed to scan replays for match %s", match_id)
+            logger.exception("Delayed replay scan failed for match %s", match_id)
 
 
     def toggle_webcam(self) -> None:

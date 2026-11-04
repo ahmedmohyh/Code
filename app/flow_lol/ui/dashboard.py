@@ -29,6 +29,8 @@ from PyQt6.QtWidgets import (
     QSlider,
     QSplitter,
     QStackedWidget,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -70,7 +72,7 @@ class FlowTimelineWidget(QWidget):
         self.predictions: List[Dict[str, Any]] = []
         self.matches: List[Dict[str, Any]] = []
         self.game_events: List[Dict[str, Any]] = []
-        self.mode: str = self.MODE_TIMELINE
+        self.mode: str = self.MODE_DISTRIBUTION
         self._alternate_shading = False
         self._selected_prediction: Optional[Dict[str, Any]] = None
         self._selected_event: Optional[Dict[str, Any]] = None
@@ -82,10 +84,27 @@ class FlowTimelineWidget(QWidget):
         self._visible_match_ids: set[int] = set()
         self._highlight_username: Optional[str] = None
         self._filter_username: Optional[str] = None
+        self._show_kills = True
+        self._show_deaths = True
+        self._show_objectives = False
         self.setMinimumHeight(240)
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def set_event_visibility(
+        self,
+        kills: Optional[bool] = None,
+        deaths: Optional[bool] = None,
+        objectives: Optional[bool] = None,
+    ) -> None:
+        if kills is not None:
+            self._show_kills = kills
+        if deaths is not None:
+            self._show_deaths = deaths
+        if objectives is not None:
+            self._show_objectives = objectives
+        self.update()
 
     def set_mode(self, mode: str) -> None:
         allowed = (
@@ -265,7 +284,6 @@ class FlowTimelineWidget(QWidget):
 
         self._draw_axis_and_events(painter, plot_w, plot_h, t_min, t_max)
         self._draw_axis_labels(painter, plot_w, plot_h)
-        self._draw_legend(painter)
         self._draw_selection(painter, plot_w, plot_h, t_min, t_max)
         self._draw_hover_indicator(painter, plot_w, plot_h, t_min, t_max)
 
@@ -503,6 +521,36 @@ class FlowTimelineWidget(QWidget):
         painter.setBrush(Qt.BrushStyle.NoBrush)
         painter.drawPath(path)
 
+    def _event_passes_type_filter(self, event: Dict[str, Any]) -> bool:
+        """Return True if the event should be drawn given the current toggles.
+
+        When a single player is highlighted, a ChampionKill event is split:
+        - actor == highlighted player -> controlled by the Kills toggle
+        - target == highlighted player -> controlled by the Deaths toggle
+        Otherwise raw event_type maps directly to its toggle.
+        """
+        event_type = event.get("event_type", "")
+        highlight = self._highlight_username
+        actor = (event.get("actor") or "").lower()
+        target = (event.get("target") or "").lower()
+        is_actor = bool(highlight and actor == highlight)
+        is_target = bool(highlight and target == highlight)
+
+        if event_type == "kill":
+            if highlight:
+                if is_actor:
+                    return self._show_kills
+                if is_target:
+                    return self._show_deaths
+                # Should not reach here when the player filter is active.
+                return self._show_kills
+            return self._show_kills
+        if event_type == "death":
+            return self._show_deaths
+        if event_type == "objective":
+            return self._show_objectives
+        return True
+
     def _draw_axis_and_events(
         self,
         painter: QPainter,
@@ -523,11 +571,13 @@ class FlowTimelineWidget(QWidget):
             t = event.get("timestamp")
             if t is None:
                 continue
+            if not self._event_passes_type_filter(event):
+                continue
+            etype = event.get("event_type", "")
             x = int(self._x(t, t_min, t_max, plot_w))
             if x < self.PADDING_LEFT or x > self.width() - self.PADDING_RIGHT:
                 continue
-            etype = event.get("event_type", "")
-            y = lane_top + self._event_lane_offset(etype) * lane_height
+            y = lane_top + self._event_lane_offset(etype, event) * lane_height
             rect = QRect(x - 9, y - 9, 18, 18)
             self._event_positions.append((event, rect))
             self._draw_event_symbol(painter, rect, event, event == self._selected_event)
@@ -544,8 +594,17 @@ class FlowTimelineWidget(QWidget):
             x = self._x(label_t, t_min, t_max, plot_w)
             painter.drawText(int(x - 30), y_axis + 20, 60, 20, Qt.AlignmentFlag.AlignCenter, txt)
 
-    def _event_lane_offset(self, event_type: str) -> int:
-        """Return which event lane (0..2) an event type lives in."""
+    def _event_lane_offset(self, event_type: str, event: Dict[str, Any]) -> int:
+        """Return which event lane (0..2) an event lives in.
+
+        When a player is highlighted and they were the victim of a kill,
+        place that symbol in the death lane so the K/D lanes stay meaningful.
+        """
+        highlight = self._highlight_username
+        if highlight and event_type == "kill":
+            target = (event.get("target") or "").lower()
+            if target == highlight:
+                return 1
         return {
             "kill": 0,
             "death": 1,
@@ -580,16 +639,23 @@ class FlowTimelineWidget(QWidget):
         is_actor = bool(highlight and actor == highlight)
         is_target = bool(highlight and target == highlight)
 
-        # When a player is selected and this event involves them, show role-based symbol.
-        if is_actor:
+        # Default symbol from event type.
+        base_color = event_colors.get(event_type, QColor(Colors.WARNING))
+        label = {"kill": "K", "death": "D", "objective": "O"}.get(event_type, "?")
+
+        # When a player is selected and this kill/death event involves them,
+        # change the symbol to show their role. Objectives stay blue O.
+        # For kills: actor = killer (green K), target = victim (red D).
+        # For deaths: actor = the player who died (red D).
+        if event_type == "kill" and is_actor:
             base_color = QColor(Colors.SUCCESS)
             label = "K"
-        elif is_target:
+        elif event_type == "kill" and is_target:
             base_color = QColor(Colors.DANGER)
             label = "D"
-        else:
-            base_color = event_colors.get(event_type, QColor(Colors.WARNING))
-            label = {"kill": "K", "death": "D", "objective": "O"}.get(event_type, "?")
+        elif event_type == "death" and is_actor:
+            base_color = QColor(Colors.DANGER)
+            label = "D"
 
         # Selection ring.
         if selected:
@@ -641,52 +707,6 @@ class FlowTimelineWidget(QWidget):
         painter.setPen(QColor(Colors.TEXT_SECONDARY))
         painter.drawText(-60, 0, 120, 16, Qt.AlignmentFlag.AlignCenter, "Flow state")
         painter.restore()
-
-    def _draw_legend(self, painter: QPainter) -> None:
-        """Draw a compact legend below the X-axis, outside the plot area."""
-        items = [
-            ("Kill", QColor(Colors.SUCCESS), "K"),
-            ("Death", QColor(Colors.DANGER), "D"),
-            ("Objective", QColor(Colors.PRIMARY), "O"),
-        ]
-        legend_w = 20 + 70 * len(items)
-        legend_h = 22
-        # Place it just below the axis line and time labels.
-        y = self.height() - self.PADDING_BOTTOM + 4
-        x = self.PADDING_LEFT
-
-        # Semi-transparent background.
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(Colors.SURFACE))
-        painter.setOpacity(0.95)
-        painter.drawRoundedRect(x, y, legend_w, legend_h, 6, 6)
-        painter.setOpacity(1.0)
-
-        painter.setPen(QColor(Colors.TEXT_SECONDARY))
-        font = painter.font()
-        font.setPointSize(8)
-        painter.setFont(font)
-
-        row_x = x + 8
-        row_y = y + 6
-        for name, color, label in items:
-            # Symbol circle.
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(color)
-            painter.drawEllipse(row_x, row_y - 5, 12, 12)
-            # Letter label.
-            painter.setPen(QPen(QColor(Colors.SURFACE), 1))
-            rect = QRect(row_x, row_y - 5, 12, 12)
-            font2 = painter.font()
-            font2.setBold(True)
-            font2.setPointSize(7)
-            painter.setFont(font2)
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
-            # Name.
-            painter.setPen(QColor(Colors.TEXT))
-            painter.setFont(font)
-            painter.drawText(row_x + 16, row_y, 50, 12, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, name)
-            row_x += 70
 
     def _event_at(self, x: int, y: int) -> Optional[Dict[str, Any]]:
         """Return the visible event whose symbol contains the given point."""
@@ -817,6 +837,64 @@ class FlowTimelineWidget(QWidget):
             self.prediction_clicked.emit(pred)
 
 
+class LegendToggle(QWidget):
+    """Colored event symbol + text label + on/off switch for the timeline legend."""
+
+    toggled = pyqtSignal(bool)
+
+    def __init__(
+        self,
+        text: str,
+        event_type: str,
+        checked: bool = True,
+        parent: QWidget | None = None,
+    ) -> None:
+        super().__init__(parent)
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        self.symbol_label = QLabel()
+        self.symbol_label.setPixmap(self._symbol_pixmap(event_type))
+        layout.addWidget(self.symbol_label)
+
+        self.text_label = QLabel(text)
+        self.text_label.setProperty("role", "muted")
+        layout.addWidget(self.text_label)
+
+        self.switch = Switch(checked=checked)
+        self.switch.toggled.connect(self.toggled.emit)
+        layout.addWidget(self.switch)
+
+    @staticmethod
+    def _symbol_pixmap(event_type: str, size: int = 16) -> QPixmap:
+        """Draw the same K/D/O circle symbol used on the graph."""
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        color = {
+            "kill": QColor(Colors.SUCCESS),
+            "death": QColor(Colors.DANGER),
+            "objective": QColor(Colors.PRIMARY),
+        }.get(event_type, QColor(Colors.WARNING))
+        letter = {"kill": "K", "death": "D", "objective": "O"}.get(event_type, "?")
+
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(color)
+        painter.drawEllipse(0, 0, size, size)
+
+        font = painter.font()
+        font.setBold(True)
+        font.setPointSize(7)
+        painter.setFont(font)
+        painter.setPen(QPen(QColor(Colors.SURFACE), 1))
+        painter.drawText(QRect(0, 0, size, size), Qt.AlignmentFlag.AlignCenter, letter)
+        painter.end()
+        return pixmap
+
+
 class DashboardWidget(QWidget):
     """Post-game dashboard for reviewing sessions, matches, and flow predictions."""
 
@@ -905,6 +983,7 @@ class DashboardWidget(QWidget):
         self.view_combo.addItem("Line graph", FlowTimelineWidget.MODE_LINE)
         self.view_combo.addItem("Scatter", FlowTimelineWidget.MODE_SCATTER)
         self.view_combo.addItem("Flow distribution", FlowTimelineWidget.MODE_DISTRIBUTION)
+        self.view_combo.setCurrentIndex(self.view_combo.count() - 1)
         self.view_combo.currentIndexChanged.connect(self._on_view_mode_changed)
         view_row.addWidget(self.view_combo)
 
@@ -965,17 +1044,41 @@ class DashboardWidget(QWidget):
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
 
         # Timeline card with inline zoom button
-        timeline_card = CardWidget("Flow timeline")
+        timeline_card = CardWidget()  # title built manually with toggle switches
         timeline_container = QWidget()
         timeline_container_layout = QVBoxLayout(timeline_container)
         timeline_container_layout.setContentsMargins(0, 0, 0, 0)
         timeline_container_layout.setSpacing(0)
+
+        # Header with title + kill/death/objective toggle switches
+        timeline_header = QHBoxLayout()
+        timeline_title = QLabel("Flow timeline")
+        timeline_title.setProperty("role", "heading")
+        timeline_header.addWidget(timeline_title)
+        timeline_header.addStretch()
+
+        self.kill_switch = self._make_legend_switch("Kills", FlowTimelineWidget.EVENT_SYMBOL_KILL)
+        self.death_switch = self._make_legend_switch("Deaths", FlowTimelineWidget.EVENT_SYMBOL_DEATH)
+        self.objective_switch = self._make_legend_switch("Objectives", FlowTimelineWidget.EVENT_SYMBOL_OBJECTIVE)
+        self.objective_switch.switch.setChecked(False)
+        # Deaths only exist relative to a selected player; hide the toggle in All-players mode.
+        self.death_switch.setVisible(False)
+        timeline_header.addWidget(self.kill_switch)
+        timeline_header.addSpacing(12)
+        timeline_header.addWidget(self.death_switch)
+        timeline_header.addSpacing(12)
+        timeline_header.addWidget(self.objective_switch)
+        timeline_card.content_layout().addLayout(timeline_header)
 
         self.timeline = FlowTimelineWidget()
         self.timeline.prediction_clicked.connect(self._on_prediction_clicked)
         self.timeline.selection_changed.connect(self._on_timeline_selection_changed)
         self.timeline.event_clicked.connect(self._on_timeline_event_clicked)
         timeline_container_layout.addWidget(self.timeline, stretch=1)
+
+        self.kill_switch.toggled.connect(lambda checked: (self.timeline.set_event_visibility(kills=checked), self._refresh_event_list()))
+        self.death_switch.toggled.connect(lambda checked: (self.timeline.set_event_visibility(deaths=checked), self._refresh_event_list()))
+        self.objective_switch.toggled.connect(lambda checked: (self.timeline.set_event_visibility(objectives=checked), self._refresh_event_list()))
 
         zoom_bar = QHBoxLayout()
         zoom_bar.addStretch()
@@ -987,16 +1090,31 @@ class DashboardWidget(QWidget):
         zoom_bar.addWidget(self.expand_graph_btn)
         timeline_container_layout.addLayout(zoom_bar)
 
-        # Event list lives under the graph so it stays visible in expanded mode.
+        # Event summary lives under the graph and is only shown when a player is selected.
+        self.events_container = QWidget()
+        events_container_layout = QVBoxLayout(self.events_container)
+        events_container_layout.setContentsMargins(0, 0, 0, 0)
+        events_container_layout.setSpacing(4)
         events_label = QLabel("Game events")
         events_label.setProperty("role", "muted")
-        timeline_container_layout.addWidget(events_label)
-        self.event_list = QListWidget()
-        self.event_list.setAlternatingRowColors(True)
-        self.event_list.setMinimumHeight(90)
-        self.event_list.setMaximumHeight(160)
-        self.event_list.itemClicked.connect(self._on_event_list_clicked)
-        timeline_container_layout.addWidget(self.event_list)
+        events_container_layout.addWidget(events_label)
+
+        self.event_table = QTableWidget()
+        self.event_table.setColumnCount(3)
+        self.event_table.setHorizontalHeaderLabels(["Time", "Type", "Details"])
+        self.event_table.horizontalHeader().setStretchLastSection(True)
+        self.event_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.event_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        self.event_table.setAlternatingRowColors(True)
+        self.event_table.setMinimumHeight(90)
+        self.event_table.setMaximumHeight(160)
+        self.event_table.setColumnWidth(0, 70)
+        self.event_table.setColumnWidth(1, 80)
+        self.event_table.itemClicked.connect(self._on_event_table_clicked)
+        self.event_table.itemDoubleClicked.connect(self._on_event_table_double_clicked)
+        events_container_layout.addWidget(self.event_table)
+        self.events_container.setVisible(False)
+        timeline_container_layout.addWidget(self.events_container)
 
         timeline_card.content_layout().addWidget(timeline_container)
         self.splitter.addWidget(timeline_card)
@@ -1066,7 +1184,8 @@ class DashboardWidget(QWidget):
             self.details_label.setProperty("role", "muted")
             self.match_combo.clear()
             self.match_combo.setEnabled(False)
-            self.event_list.clear()
+            self.event_table.setRowCount(0)
+            self.events_container.setVisible(False)
             self.timeline.set_data([])
             self._current_session_id = None
             self.session_changed.emit(None)
@@ -1100,13 +1219,6 @@ class DashboardWidget(QWidget):
         self._current_game_events = list(game_events)
         self._refresh_player_list(all_matches=True)
 
-        # Global event / replay summaries
-        self.event_list.clear()
-        for e in game_events:
-            self.event_list.addItem(self._event_description(e))
-        if not game_events:
-            self.event_list.addItem("No game events recorded")
-
         self.replay_list.clear()
         self._replay_rows: List[Dict[str, Any]] = replays
         for r in replays:
@@ -1138,7 +1250,7 @@ class DashboardWidget(QWidget):
         self.details_label.setProperty("role", "")
         self.details_label.setText(
             f"<b>Session {session_id}</b><br>"
-            f"Started: {datetime.fromtimestamp(session['started_at'])}<br>"
+            f"Started: {datetime.fromtimestamp(session['started_at']).strftime('%Y-%m-%d %H:%M:%S')}<br>"
             f"Duration: {duration}<br>"
             f"Sensors: {sensor_summary}<br>"
             f"Predictions: {n_preds} windows<br>"
@@ -1156,9 +1268,14 @@ class DashboardWidget(QWidget):
 
     @staticmethod
     def _format_duration(seconds: float) -> str:
-        """Format seconds as Xm YYs."""
+        """Format seconds as hours/minutes/seconds depending on length."""
         s = max(0, int(round(seconds)))
-        return f"{s // 60}m {s % 60:02d}s"
+        hours = s // 3600
+        minutes = (s % 3600) // 60
+        secs = s % 60
+        if hours:
+            return f"{hours}h {minutes}m {secs:02d}s"
+        return f"{minutes}m {secs:02d}s"
 
     def _prediction_step_seconds(self, predictions: List[Dict[str, Any]]) -> float:
         """Estimate the interval between consecutive prediction windows."""
@@ -1292,6 +1409,24 @@ class DashboardWidget(QWidget):
         if 0 <= self._selected_index < len(self._sorted_predictions):
             self._on_prediction_clicked(self._sorted_predictions[self._selected_index])
 
+    def _inspect_nearest_prediction(self, timestamp: Optional[float]) -> None:
+        """Select the prediction window closest to the given timestamp and open the inspect popup."""
+        if not self._sorted_predictions or timestamp is None:
+            return
+        nearest = min(
+            self._sorted_predictions,
+            key=lambda p: abs(p.get("timestamp", 0.0) - timestamp),
+        )
+        if not nearest:
+            return
+        for i, p in enumerate(self._sorted_predictions):
+            if p["timestamp"] == nearest["timestamp"]:
+                self._selected_index = i
+                break
+        self.timeline.set_selected_prediction(nearest)
+        self._update_selection_ui()
+        self._on_prediction_clicked(nearest)
+
     def _on_alternate_toggled(self, enabled: bool) -> None:
         self.timeline.set_alternate_shading(enabled)
 
@@ -1304,6 +1439,10 @@ class DashboardWidget(QWidget):
         else:
             self.timeline.set_filter_username(None)
             self.timeline.set_highlight_username(None)
+        # The Deaths toggle only makes sense when a single player is selected,
+        # because globally a ChampionKill is just a kill (actor + victim).
+        self.death_switch.setVisible(bool(username))
+        self._refresh_event_list()
 
     def _toggle_graph_expansion(self) -> None:
         """Expand the graph to hide the details panel, or restore it."""
@@ -1334,22 +1473,36 @@ class DashboardWidget(QWidget):
         if not all_matches and match_id != -1:
             events = [e for e in events if e.get("match_id") == match_id]
 
-        players = sorted({
-            (e.get("actor") or "").lower()
-            for e in events
-            if e.get("actor")
-        } | {
-            (e.get("target") or "").lower()
-            for e in events
-            if e.get("target")
-        })
+        # Compute K/D counts per player.
+        stats: Dict[str, Dict[str, int]] = {}
+        for e in events:
+            actor = (e.get("actor") or "").lower()
+            target = (e.get("target") or "").lower()
+            etype = e.get("event_type", "")
+            if actor:
+                stats.setdefault(actor, {"kills": 0, "deaths": 0})
+                if etype == "kill":
+                    stats[actor]["kills"] += 1
+                elif etype == "death":
+                    stats[actor]["deaths"] += 1
+            if target:
+                stats.setdefault(target, {"kills": 0, "deaths": 0})
+                if etype == "kill":
+                    stats[target]["deaths"] += 1
+                elif etype == "death":
+                    stats[target]["kills"] += 1
+
+        players = sorted(stats.keys())
 
         # Preserve current selection if the player is still in the new list.
         current = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
         self.player_filter_combo.clear()
         self.player_filter_combo.addItem("All players", None)
         for p in players:
-            self.player_filter_combo.addItem(p, p)
+            kills = stats[p]["kills"]
+            deaths = stats[p]["deaths"]
+            text = f"{p} (K:{kills} D:{deaths})"
+            self.player_filter_combo.addItem(text, p)
         if current and current in players:
             idx = self.player_filter_combo.findData(current)
             self.player_filter_combo.setCurrentIndex(max(0, idx))
@@ -1392,45 +1545,72 @@ class DashboardWidget(QWidget):
                 "No replays linked" if match_id == -1 else "No replays linked to this match"
             )
 
-    def _refresh_event_list(self) -> None:
-        """Repopulate the event list respecting the current match and player filters."""
+    def _table_events(self) -> List[Dict[str, Any]]:
+        """Return the exact events currently shown in the table under the graph.
+
+        Applies match filter, player filter, and kill/death/objective toggles.
+        """
         match_id = self.match_combo.itemData(self.match_combo.currentIndex())
         username = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
+        if not username:
+            return []
 
         events = list(self._current_game_events)
         if match_id != -1:
             events = [e for e in events if e.get("match_id") == match_id]
-        if username:
-            username = username.lower()
-            events = [
-                e for e in events
-                if (e.get("actor") or "").lower() == username
-                or (e.get("target") or "").lower() == username
-            ]
+        username = username.lower()
+        events = [
+            e for e in events
+            if (e.get("actor") or "").lower() == username
+            or (e.get("target") or "").lower() == username
+        ]
 
-        self.event_list.clear()
+        # Apply the same kill/death/objective toggles that govern the graph.
+        filtered: List[Dict[str, Any]] = []
         for e in events:
-            item = QListWidgetItem(self._event_description(e))
-            item.setData(Qt.ItemDataRole.UserRole, id(e))
-            self.event_list.addItem(item)
-        if not events:
-            self.event_list.addItem("No game events match the current filters")
+            etype = e.get("event_type", "")
+            is_actor = (e.get("actor") or "").lower() == username
+            is_target = (e.get("target") or "").lower() == username
+            if etype == "kill":
+                if is_actor and not self.timeline._show_kills:
+                    continue
+                if is_target and not self.timeline._show_deaths:
+                    continue
+            elif etype == "death" and not self.timeline._show_deaths:
+                continue
+            elif etype == "objective" and not self.timeline._show_objectives:
+                continue
+            filtered.append(e)
+        return filtered
 
-    def _filtered_events(self) -> List[Dict[str, Any]]:
-        """Return the events currently visible in the list."""
-        match_id = self.match_combo.itemData(self.match_combo.currentIndex())
+    def _refresh_event_list(self) -> None:
+        """Repopulate the event table respecting the current match and player filters."""
         username = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
-        events = list(self._current_game_events)
-        if match_id != -1:
-            events = [e for e in events if e.get("match_id") == match_id]
-        if username:
-            username = username.lower()
-            events = [
-                e for e in events
-                if (e.get("actor") or "").lower() == username
-                or (e.get("target") or "").lower() == username
-            ]
-        return events
+        self.events_container.setVisible(bool(username))
+        if not username:
+            return
+
+        filtered = self._table_events()
+        self.event_table.setRowCount(len(filtered))
+        for row, e in enumerate(filtered):
+            t_item = QTableWidgetItem(datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M:%S"))
+            type_item = QTableWidgetItem(e.get("event_type", "").capitalize())
+            actor = e.get("actor") or "?"
+            target = e.get("target") or ""
+            details = f"{actor} → {target}" if target else actor
+            details_item = QTableWidgetItem(details)
+            t_item.setData(Qt.ItemDataRole.UserRole, id(e))
+            type_item.setData(Qt.ItemDataRole.UserRole, id(e))
+            details_item.setData(Qt.ItemDataRole.UserRole, id(e))
+            self.event_table.setItem(row, 0, t_item)
+            self.event_table.setItem(row, 1, type_item)
+            self.event_table.setItem(row, 2, details_item)
+        if not filtered:
+            self.event_table.setRowCount(1)
+            for col in range(3):
+                item = QTableWidgetItem("No game events match the current filters")
+                item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+                self.event_table.setItem(0, col, item)
 
     def _event_description(self, e: Dict[str, Any]) -> str:
         t = datetime.fromtimestamp(e["timestamp"]).strftime("%H:%M:%S")
@@ -1443,30 +1623,50 @@ class DashboardWidget(QWidget):
             desc += f": {actor}"
         return desc
 
-    def _on_event_list_clicked(self, item: QListWidgetItem) -> None:
-        """When the user clicks an event in the list, highlight it on the graph."""
-        row = self.event_list.row(item)
-        if row < 0:
-            return
-        events = self._filtered_events()
+    def _on_event_table_clicked(self, item: QTableWidgetItem) -> None:
+        """When the user clicks a row in the event table, highlight it on the graph."""
+        row = item.row()
+        events = self._table_events()
         if row < len(events):
             self.timeline.set_selected_event(events[row])
 
+    def _on_event_table_double_clicked(self, item: QTableWidgetItem) -> None:
+        """Double-click an event row: jump to the nearest prediction window and inspect it."""
+        row = item.row()
+        events = self._table_events()
+        if row >= len(events):
+            return
+        event = events[row]
+        self._inspect_nearest_prediction(event.get("timestamp"))
+
     def _on_timeline_event_clicked(self, event: Dict[str, Any]) -> None:
-        """When the user clicks an event symbol on the graph, select it in the list."""
+        """When the user clicks an event symbol on the graph, select it in the table."""
         match_id = event.get("match_id")
         if match_id is not None:
             idx = self.match_combo.findData(match_id)
             if idx >= 0:
                 self.match_combo.setCurrentIndex(idx)
-        events = self._filtered_events()
-        for i in range(self.event_list.count()):
-            item = self.event_list.item(i)
-            if item is None:
-                continue
-            row = self.event_list.row(item)
-            if row < len(events) and events[row] is event:
-                self.event_list.setCurrentItem(item)
+        # Make sure the table is visible and populated. If no player is selected,
+        # pick the actor/target of this event automatically.
+        username = self.player_filter_combo.itemData(self.player_filter_combo.currentIndex())
+        actor = (event.get("actor") or "").lower()
+        target = (event.get("target") or "").lower()
+        if not username and (actor or target):
+            chosen = actor or target
+            idx = self.player_filter_combo.findData(chosen)
+            if idx >= 0:
+                self.player_filter_combo.setCurrentIndex(idx)
+            else:
+                # Player not in the list for the current match; fall back to all matches.
+                self._refresh_player_list(all_matches=True)
+                idx = self.player_filter_combo.findData(chosen)
+                if idx >= 0:
+                    self.player_filter_combo.setCurrentIndex(idx)
+
+        events = self._table_events()
+        for row, e in enumerate(events):
+            if e is event:
+                self.event_table.selectRow(row)
                 break
 
     def _open_fullscreen_graph(self) -> None:
@@ -1546,6 +1746,14 @@ class DashboardWidget(QWidget):
         logger.info("Cleared all sessions from database (%s deleted)", n_deleted)
         self.refresh_sessions()
 
+    def _make_legend_switch(
+        self,
+        label: str,
+        event_type: str,
+    ) -> LegendToggle:
+        """Create a colored K/D/O symbol + label + Switch for the timeline legend."""
+        return LegendToggle(label, event_type, checked=True)
+
 
 class FullscreenGraphDialog(QDialog):
     """Maximized timeline with session/match selectors and event list."""
@@ -1599,9 +1807,18 @@ class FullscreenGraphDialog(QDialog):
         self.view_combo.addItem("Line graph", FlowTimelineWidget.MODE_LINE)
         self.view_combo.addItem("Scatter", FlowTimelineWidget.MODE_SCATTER)
         self.view_combo.addItem("Flow distribution", FlowTimelineWidget.MODE_DISTRIBUTION)
+        self.view_combo.setCurrentIndex(self.view_combo.count() - 1)
         self.view_combo.currentIndexChanged.connect(self._on_view_changed)
         top_bar.addWidget(QLabel("View:"))
         top_bar.addWidget(self.view_combo)
+
+        self.fs_kill_switch = self._make_fs_legend_switch("Kills", FlowTimelineWidget.EVENT_SYMBOL_KILL)
+        self.fs_objective_switch = self._make_fs_legend_switch("Objectives", FlowTimelineWidget.EVENT_SYMBOL_OBJECTIVE)
+        self.fs_objective_switch.switch.setChecked(False)
+        top_bar.addSpacing(12)
+        top_bar.addWidget(self.fs_kill_switch)
+        top_bar.addSpacing(12)
+        top_bar.addWidget(self.fs_objective_switch)
 
         close_btn = QPushButton("✕ Close")
         close_btn.clicked.connect(self.accept)
@@ -1615,6 +1832,9 @@ class FullscreenGraphDialog(QDialog):
         self.timeline.setMinimumHeight(360)
         self.timeline.event_clicked.connect(self._on_timeline_event_clicked)
         splitter.addWidget(self.timeline)
+
+        self.fs_kill_switch.toggled.connect(lambda checked: self.timeline.set_event_visibility(kills=checked))
+        self.fs_objective_switch.toggled.connect(lambda checked: self.timeline.set_event_visibility(objectives=checked))
 
         events_card = CardWidget("Game events")
         events_layout = events_card.content_layout()
@@ -1732,6 +1952,14 @@ class FullscreenGraphDialog(QDialog):
             if row < len(events) and events[row] is event:
                 self.event_list.setCurrentItem(item)
                 break
+
+    def _make_fs_legend_switch(
+        self,
+        label: str,
+        event_type: str,
+    ) -> LegendToggle:
+        """Create a colored K/D/O symbol + label + Switch for the fullscreen timeline legend."""
+        return LegendToggle(label, event_type, checked=True)
 
 
 class PredictionInspectDialog(QDialog):
